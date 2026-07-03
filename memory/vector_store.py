@@ -2,20 +2,32 @@
 import chromadb
 from chromadb.utils import embedding_functions
 
+import os
+import chromadb
+from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
+
+load_dotenv()
+
 class VectorMemory:
     def __init__(self):
-        # Local persistent memory (data save rahega)
-        self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        print("[Vector DB] Connecting to ChromaDB...")
+        self.client = chromadb.PersistentClient(path="./chroma_db")
         
-        # BGE ya MiniLM fast embeddings ke liye best hote hain
-        self.sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"
+        # ⚡ THE PIVOT: Zero-RAM Cloud Embeddings via Hugging Face API
+        hf_token = os.getenv("HF_TOKEN")
+        if not hf_token:
+            print("🚨 Warning: HF_TOKEN missing in .env")
+            
+        self.cloud_ef = embedding_functions.HuggingFaceEmbeddingFunction(
+            api_key=hf_token,
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
         
-        # Collection create karo
-        self.collection = self.chroma_client.get_or_create_collection(
-            name="customer_feedback",
-            embedding_function=self.sentence_transformer_ef
+        # Updating collection to use the cloud embedding function
+        self.collection = self.client.get_or_create_collection(
+            name="customer_issues",
+            embedding_function=self.cloud_ef
         )
 
     def add_issue(self, issue_id: str, text: str, metadata: dict = None):
