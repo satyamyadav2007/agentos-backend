@@ -30,16 +30,18 @@ class VectorMemory:
             embedding_function=self.cloud_ef
         )
 
-    def add_issue(self, issue_id: str, text: str, metadata: dict = None):
-        """Naya bug report vector graph me daalo"""
-        if metadata is None:
-            metadata = {}
-        self.collection.add(
-            documents=[text],
-            metadatas=[metadata],
-            ids=[issue_id]
-        )
-
+    def add_issue(self, issue_id: str, text: str, metadata: dict):
+        print("✨ [Vector DB] Novel issue detected. Adding to memory...")
+        try:
+            self.collection.add(
+                documents=[text],
+                metadatas=[metadata],
+                ids=[issue_id]
+            )
+            print("      ↳ Successfully saved to memory.")
+        except Exception as e:
+            # ⚡ THE FIX: Safety net for saving data too!
+            print(f"🚨 [Vector DB Warning] Could not save to memory (Cloud API offline). Bypassing. Error: {str(e)[:50]}...")
     def check_duplicate(self, issue_text: str):
         print(f"[Vector DB] Checking for duplicates...")
         try:
