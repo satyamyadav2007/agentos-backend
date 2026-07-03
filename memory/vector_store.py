@@ -43,7 +43,6 @@ class VectorMemory:
     def check_duplicate(self, issue_text: str):
         print(f"[Vector DB] Checking for duplicates...")
         try:
-            # Trying to contact Hugging Face API
             results = self.collection.query(
                 query_texts=[issue_text],
                 n_results=1
@@ -53,13 +52,15 @@ class VectorMemory:
                 distance = results['distances'][0][0]
                 if distance < 1.0: 
                     print(f"      ↳ [Duplicate Found] Distance: {distance}")
-                    return results['documents'][0][0]
+                    # Return True as a dictionary
+                    return {"is_duplicate": True, "duplicate_text": results['documents'][0][0]}
             
             print("      ↳ [No Duplicate] This is a new issue.")
-            return None
+            # ⚡ THE FIX: Return a dictionary instead of None
+            return {"is_duplicate": False}
             
         except Exception as e:
-            # ⚡ THE SAFETY NET: If Hugging Face is down, don't crash. Just bypass.
+            # ⚡ THE FIX: Same here, return a dictionary for the bypass
             print(f"🚨 [Vector DB Warning] Cloud API offline or failed. Bypassing duplicate check. Error: {str(e)[:50]}...")
-            return None
+            return {"is_duplicate": False}
 vector_memory = VectorMemory()            
