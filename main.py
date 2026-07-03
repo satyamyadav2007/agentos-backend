@@ -20,7 +20,12 @@ app = FastAPI(title="AI Chief Product Officer API", version="1.0")
  
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    # ⚡ THE FIX: Allowing any Vercel preview domain and localhost
+    allow_origins=[
+        "http://localhost:3000",
+        "https://agentos-frontend-azure.vercel.app", 
+        "*"  # Allows all domains temporarily for the MVP testing phase
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
