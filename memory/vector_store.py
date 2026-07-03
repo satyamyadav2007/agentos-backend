@@ -40,19 +40,25 @@ class VectorMemory:
             ids=[issue_id]
         )
 
-    def check_duplicate(self, new_text: str, threshold: float = 0.85):
-        """Check karo agar ye bug pehle bhi kisi ne report kiya hai"""
-        results = self.collection.query(
-            query_texts=[new_text],
-            n_results=1
-        )
-        
-        # Agar distances (similarity) ek limit se kam hai, matlab duplicate mil gaya!
-        if results['distances'] and results['distances'][0]:
-            distance = results['distances'][0][0]
-            if distance < (1.0 - threshold): # Chroma uses distance, not cosine similarity directly
-                return {"is_duplicate": True, "matched_id": results['ids'][0][0]}
-                
-        return {"is_duplicate": False}
-
-vector_memory = VectorMemory()
+    def check_duplicate(self, issue_text: str):
+        print(f"[Vector DB] Checking for duplicates...")
+        try:
+            # Trying to contact Hugging Face API
+            results = self.collection.query(
+                query_texts=[issue_text],
+                n_results=1
+            )
+            
+            if results and results['distances'] and len(results['distances'][0]) > 0:
+                distance = results['distances'][0][0]
+                if distance < 1.0: 
+                    print(f"      ↳ [Duplicate Found] Distance: {distance}")
+                    return results['documents'][0][0]
+            
+            print("      ↳ [No Duplicate] This is a new issue.")
+            return None
+            
+        except Exception as e:
+            # ⚡ THE SAFETY NET: If Hugging Face is down, don't crash. Just bypass.
+            print(f"🚨 [Vector DB Warning] Cloud API offline or failed. Bypassing duplicate check. Error: {str(e)[:50]}...")
+            return None
