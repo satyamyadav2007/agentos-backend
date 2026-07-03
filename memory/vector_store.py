@@ -62,3 +62,4 @@ class VectorMemory:
             # ⚡ THE SAFETY NET: If Hugging Face is down, don't crash. Just bypass.
             print(f"🚨 [Vector DB Warning] Cloud API offline or failed. Bypassing duplicate check. Error: {str(e)[:50]}...")
             return None
+vector_memory = VectorMemory()            
