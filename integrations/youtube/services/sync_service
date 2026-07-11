@@ -1,0 +1,29 @@
+from typing import Dict, Any, List
+from integrations.youtube.extractors.comments import YouTubeCommentExtractor
+from integrations.youtube.normalizer import YouTubeNormalizer
+
+class YouTubeSyncService:
+    """Orchestrates extraction and normalization for Video Intelligence."""
+    
+    def __init__(self, client):
+        self.client = client
+        self.comment_extractor = YouTubeCommentExtractor(client)
+        
+    async def run_full_sync(self, tracking_video_ids: List[str]) -> List[Dict[str, Any]]:
+        print("\n🚀 [YouTube Sync] Starting Long-form Customer Intelligence Sync...")
+        
+        all_universal_events = []
+        
+        for video_id in tracking_video_ids:
+            # 1. Fetch Top Comments per video
+            comment_models = await self.comment_extractor.fetch_video_comments(video_id)
+            
+            # 2. Normalize to Universal Format
+            for comment in comment_models:
+                # Filter out pure noise (e.g., "nice video") by length, keeping detailed feedback
+                if len(comment.text_original) > 20:
+                    normalized = YouTubeNormalizer.normalize_comment(comment)
+                    all_universal_events.append(normalized)
+            
+        print(f"🧠 [AgentOS Brain] Normalized {len(all_universal_events)} deep insights from YouTube!")
+        return all_universal_events

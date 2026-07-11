@@ -121,7 +121,7 @@ class Neo4jConnection:
         """
         with self.driver.session(database="862f6db5") as session:
             session.run(seed_query)
-    def ingest_root_cause_node(self, bug_title: str, client_email: str, arr_impact: float):
+    def ingest_root_cause_node(self, bug_title: str, user_email: str, arr_impact: float):
         """
         Graph database me Bug, Client, Engineer aur Git Commit ke beech
         deep connections (relationships) build karta hai.
@@ -133,7 +133,7 @@ class Neo4jConnection:
         MERGE (b:Bug {title: $bug_title})
         SET b.severity = 'High', b.status = 'Open'
         
-        MERGE (c:Client {email: $client_email})
+        MERGE (c:Client {email: $user_email})
         SET c.arr = $arr_impact
         
         MERGE (e:Engineer {name: 'Rahul Sharma', team: 'Core Auth'})
@@ -146,8 +146,31 @@ class Neo4jConnection:
         """
         
         with self.driver.session() as session:
-            session.run(query, bug_title=bug_title, client_email=client_email, arr_impact=arr_impact)
-            print("✅ [Graph] Root Cause Node permanently mapped: Engineer 'Rahul Sharma' linked via Commit #9fd88.")        
+            session.run(query, bug_title=bug_title, user_email=user_email, arr_impact=arr_impact)
+            print("✅ [Graph] Root Cause Node permanently mapped: Engineer 'Rahul Sharma' linked via Commit #9fd88.") 
+    def get_active_issues(self, user_email: str, limit: int = 5):
+        """
+        Fetches active engineering/product issues for the workspace.
+        """
+        try:
+            # Future: Yahan tumhari asli Neo4j Cypher query aayegi
+            # query = "MATCH (w:Workspace {email: $email})-[:HAS_ISSUE]->(i:Issue) RETURN i LIMIT $limit"
+            # result = self.session.run(query, email=user_email, limit=limit)
+            
+            # Abhi AgentOS testing ke liye hum ek solid simulated data bhej rahe hain
+            print(f"🔍 [GraphDB] Fetching issues for {user_email}...")
+            
+            simulated_issues = [
+                {"title": "Video Upload Timeout (S3_GATEWAY_TIMEOUT)", "severity": "Critical"},
+                {"title": "Stripe Webhook 500 Error (ERR_PAYMENT_FAIL)", "severity": "High"},
+                {"title": "Redis Cache Miss in Authentication Module", "severity": "Medium"}
+            ]
+            
+            return simulated_issues[:limit]
+
+        except Exception as e:
+            print(f"🚨 [GraphDB Error]: {e}")
+            return []               
 
 # Ek global instance bana lo taaki main.py isko import kar sake
 graph_db = Neo4jConnection()

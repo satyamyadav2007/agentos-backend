@@ -1,30 +1,66 @@
-from integrations.manager import integration_manager
+from typing import Dict, Any
 
-async def calculate_revenue_risk(issue_data: dict, client_id: str = "CLIENT_002"):
-    """
-    Analyzes bug severity and fetches real ARR from CRM to calculate revenue at risk.
-    """
-    print("[Revenue Agent] Calculating business impact...")
-    
-    # 1. CRM se asli data fetch karo
-    crm_tool = integration_manager.get_integration("crm")
-    client_info = await crm_tool.get_client_arr(client_id)
-    
-    actual_arr = client_info.get("arr", 0)
-    client_name = client_info.get("name", "Unknown Client")
-    
-    # 2. Risk calculation logic
-    severity = issue_data.get("severity", "Low")
-    
-    if severity.lower() in ["high", "critical"]:
-        risk_amount = actual_arr
-    elif severity.lower() == "medium":
-        risk_amount = actual_arr * 0.5
-    else:
-        risk_amount = actual_arr * 0.1
+class RevenueAgent:
+    def __init__(self):
+        print("🧠 [Revenue Agent] Initialized. Ready to calculate financial impact.")
+
+    async def calculate_revenue_risk(self, event_data: Dict[str, Any], total_arr: int) -> Dict[str, Any]:
+        """
+        Calculates the ARR at risk based on the event (issue/PR) severity and the company's total ARR.
+        No direct CRM calls here - Orchestrator provides the 'total_arr' to keep architecture clean.
+        """
+        # 1. Extract context from the UniversalEvent (GitHub Issue, Zendesk Ticket, etc.)
+        severity = event_data.get("severity", "Low").lower()
+        title = event_data.get("title", "").lower()
+        description = event_data.get("description", "").lower()
+
+        # 2. Baseline risk multipliers based on severity
+        # (This is where your AI model or static rules decide the base risk)
+        risk_multipliers = {
+            "critical": 0.40,  # 40% of ARR at risk (e.g., major system outage)
+            "high": 0.15,      # 15% of ARR at risk
+            "medium": 0.05,    # 5% of ARR at risk
+            "low": 0.01,
+            "unknown": 0.00
+        }
+
+        multiplier = risk_multipliers.get(severity, 0.00)
+
+        # 3. Contextual Keyword Adjustments (AI Logic Proxy)
+        # Check if the issue title/description mentions revenue-critical paths
+        text_to_analyze = f"{title} {description}"
         
-    return {
-        "client_name": client_name,
-        "total_arr": actual_arr,
-        "revenue_at_risk": risk_amount
-    }
+        if any(word in text_to_analyze for word in ["billing", "payment", "checkout", "stripe", "invoice"]):
+            multiplier += 0.20  # Additional 20% risk for payment gateways down
+        elif any(word in text_to_analyze for word in ["login", "auth", "sso", "password"]):
+            multiplier += 0.10  # Customers can't access the app
+        elif any(word in text_to_analyze for word in ["data loss", "gdpr", "security", "leak"]):
+            multiplier += 0.30  # High churn risk due to trust loss
+
+        # 4. Cap the multiplier at 100% (Can't lose more than 100% ARR)
+        multiplier = min(multiplier, 1.0)
+
+        # 5. Calculate actual dollar amounts
+        calculated_risk_amount = int(total_arr * multiplier)
+
+        # Determine risk tier for dashboard color coding (Red, Yellow, Green)
+        if multiplier >= 0.30:
+            risk_tier = "CRITICAL"
+        elif multiplier >= 0.10:
+            risk_tier = "HIGH"
+        elif multiplier > 0:
+            risk_tier = "MEDIUM"
+        else:
+            risk_tier = "LOW"
+
+        # Return the clean, calculated insight to the Orchestrator
+        return {
+            "total_company_arr": total_arr,
+            "revenue_at_risk": calculated_risk_amount,
+            "risk_percentage": round(multiplier * 100, 2),
+            "risk_tier": risk_tier,
+            "reasoning": f"Calculated based on {severity.upper()} severity and contextual keywords."
+        }
+
+# Global instance for orchestrator to import
+revenue_agent = RevenueAgent()
