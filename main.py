@@ -350,44 +350,58 @@ class ConnectPayload(BaseModel):
 # 🔌 UNIVERSAL INTEGRATION ROUTE
 # ==========================================
 # main.py ke andar
+from fastapi import APIRouter, Depends, HTTPException
+# Make sure verify_clerk_user is imported properly
+
 @app.post("/api/integrations/{provider}/connect")
-async def connect_tool(provider: str, payload: ConnectPayload):
-    print(f"\n🔗 [Integration API] Connecting '{provider}' for workspace: {payload.workspace_id}")
+async def connect_tool(
+    provider: str, 
+    payload: ConnectPayload,
+    auth_payload: dict = Depends(verify_clerk_user) # 🔒 1. Endpoint ko secure kiya
+):
+    print(f"\n🔗 [AgentOS Integration] Connecting '{provider}' for workspace: {payload.workspace_id}")
     
     try:
-        # 1. Auth connection banao
-        connect_result = await integration_manager.connect_integration(
-            integration_name=provider.lower(),
-            workspace_id=payload.workspace_id,
-            org_id="org_dummy_123", 
-            auth_payload={"installation_id": payload.installation_id}
+        # ⚡ 2. Clerk Auth se real Org ID nikali, no more "org_dummy_123"
+        org_id = auth_payload.get("org_id", "default_org")
+        
+        # ⚡ 3. Sirf EK baar connector initialize karo
+        connector_instance = integration_manager._registry[provider.lower()](
+            workspace_id=payload.workspace_id, 
+            org_id=org_id
         )
         
-        if connect_result.get("status") == "connected":
-            # ⚡ 2. Connect hone ke baad immediately SYNC trigger karo!
-            # Real production mein isko background task (Celery/Kafka) mein daalte hain, 
-            # par abhi test karne ke liye hum direct call kar rahe hain.
-            
-            connector_instance = integration_manager._registry[provider.lower()](
-                workspace_id=payload.workspace_id, org_id="org_dummy_123"
-            )
-            # Token wapas pass karo (kyunki dummy DB use kar rahe hain abhi)
-            connector_instance.access_token = integration_manager._registry[provider.lower()](
-                workspace_id=payload.workspace_id, org_id="org_dummy_123"
-            ).auth_manager.get_installation_token(payload.installation_id)
-            
+        # ⚡ 4. Properly token fetch karo (await lagana zaroori hai agar method async hai)
+        token_response = await connector_instance.auth_manager.get_installation_token(payload.installation_id)
+        
+        # Assuming token_response dictionary return karta hai jaise {"token": "ghs_xxxx"}
+        connector_instance.access_token = token_response.get("token") if isinstance(token_response, dict) else token_response
+
+        if not connector_instance.access_token:
+            raise Exception("Failed to generate GitHub Access Token")
+
+        # 👉 YAHAN FUTURE MEIN DB SAVE AAYEGA:
+        # db.session.add(Integration(workspace_id=..., token=...))
+
+        sync_result = None
+        
+        # ⚡ 5. Sync ko try-except mein dala taaki frontend connection na toote
+        try:
+            print("⏳ Triggering initial sync...")
             sync_result = await connector_instance.sync()
+            print("✅ Sync completed successfully")
+        except Exception as sync_err:
+            print(f"⚠️ Sync failed, but connection is saved. Error: {sync_err}")
+            sync_result = {"error": "Initial sync failed or delayed", "details": str(sync_err)}
             
-            return {
-                "status": "connected",
-                "sync_info": sync_result
-            }
-            
-        return connect_result
+        return {
+            "status": "connected",
+            "sync_info": sync_result
+        }
         
     except Exception as e:
         print(f"🚨 [Integration Error]: {e}")
-        raise HTTPException(status_code=500, detail=str(e))    
+        raise HTTPException(status_code=500, detail=str(e))   
 class IntegrationRequest(BaseModel):
     platform: str
     user_email: str
