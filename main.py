@@ -384,7 +384,8 @@ async def connect_tool(
             connector_instance.auth_manager.private_key = private_key
 
             # Token fetch karo
-           token_response = connector_instance.auth_manager.get_installation_token(payload.installation_id)
+            token_response = connector_instance.auth_manager.get_installation_token(payload.installation_id)
+    
             connector_instance.access_token = token_response.get("token") if isinstance(token_response, dict) else token_response
 
             if not connector_instance.access_token:
