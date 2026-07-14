@@ -1558,6 +1558,14 @@ async def get_dashboard_stats(
         except Exception:
             arr_at_risk = 0
 
+        # Smart Revenue Formatting (e.g., $1.8M or $420k)
+        if arr_at_risk >= 1000000:
+            formatted_revenue = f"${arr_at_risk / 1000000:.1f}M"
+        elif arr_at_risk >= 1000:
+            formatted_revenue = f"${int(arr_at_risk / 1000)}k"
+        else:
+            formatted_revenue = f"${arr_at_risk}"
+
         # 2. Fetch Active Critical Issues from GraphDB
         try:
             active_issues = graph_db.get_active_issues(real_email, limit=10)
@@ -1571,26 +1579,154 @@ async def get_dashboard_stats(
         except Exception:
             critical_bugs = 0
 
-        # 3. Calculate derived metrics (Future: Add direct DB tables for these)
+        # 3. Calculate derived metrics
         customers_affected = critical_bugs * 5  # Example calculation
         expected_churn = int(arr_at_risk / 150000) if arr_at_risk > 0 else 0
 
+        # 🚀 MASTER JSON FOR FRONTEND (Zero UI Logic)
         return {
             "status": "success",
-            "stats": {
-                "criticalIncidents": critical_bugs,
-                "revenueAtRisk": arr_at_risk,
-                "customersAffected": customers_affected,
-                "expectedChurn": expected_churn
+            "data": {
+                "dashboardStats": {
+                    "criticalIncidents": critical_bugs,
+                    "revenueAtRisk": formatted_revenue,
+                    "customersAffected": customers_affected,
+                    "expectedChurn": expected_churn,
+                    "engBlockers": max(0, critical_bugs - 1), 
+                    "productOpps": 8, 
+                    "aiConfidence": "96%" 
+                },
+                "aiRecommendations": {
+                    "revenue": { "title": "Fix Login API", "subtitle": "Save", "value": formatted_revenue },
+                    "engineering": { "title": "Rollback Release 4.8", "subtitle": "Reduce crashes", "value": "42%" },
+                    "churn": { "title": "Reach out to ACME", "subtitle": "Likely to churn", "value": "Within 5 days" }
+                },
+                "customerPainData": {
+                    "keywords": ["Login Timeout", "Payment Gateway", "PDF Export"],
+                    "clusters": [
+                        { "id": 1, "name": "Payment Failure", "users": customers_affected * 2, "severity": "high" },
+                        { "id": 2, "name": "Video Upload Lag", "users": 93, "severity": "medium" }
+                    ]
+                },
+                "productOpportunities": [
+                    { "id": 1, "rank": "#1", "title": "Offline Mode", "subtitle": "High demand", "userCount": "2,134", "color": "green", "score": 92 },
+                    { "id": 2, "rank": "#2", "title": "PDF Export", "subtitle": "Enterprise blocker", "userCount": "1,811", "color": "blue", "score": 78 }
+                ],
+                "releaseIntelligence": {
+                    "version": "4.8.1",
+                    "status": "High Risk",
+                    "crashIncrease": "28%",
+                    "revenueImpact": formatted_revenue,
+                    "aiAction": "Rollback Release 4.8.1"
+                }
+                "meetingIntelligence": {
+                    "title": "Weekly All-Hands",
+                    "lastSync": "45 mins ago",
+                    "participants": [
+                        { "id": 1, "role": "CEO", "status": "Concerned", "context": "Regarding revenue risk", "color": "orange", "pulse": False },
+                        { "id": 2, "role": "Product", "status": "Delayed", "context": "Release 4.8 pushed back", "color": "yellow", "pulse": False },
+                        { "id": 3, "role": "Engineering", "status": "Blocked", "context": "Pending API resolution", "color": "red", "pulse": True },
+                        { "id": 4, "role": "Marketing", "status": "Waiting", "context": "Needs product sign-off", "color": "blue", "pulse": False }
+                    ]
+                }
+                "rootCauseGraph": {
+                    "incidentId": "Incident #823-Alpha",
+                    "title": "Root Cause Graph",
+                    "nodes": [
+                        { "id": 1, "type": "Customer", "icon": "User", "color": "blue", "action": "View Customer Details", "arrowColor": "text-gray-700" },
+                        { "id": 2, "type": "Ticket", "icon": "Ticket", "color": "gray", "action": "Open Zendesk Ticket", "arrowColor": "text-gray-700" },
+                        { "id": 3, "type": "Slack", "icon": "Hash", "color": "purple", "action": "View Slack Thread", "arrowColor": "text-gray-700" },
+                        { "id": 4, "type": "Engineer", "icon": "TerminalSquare", "color": "green", "action": "View Engineer Profile", "arrowColor": "text-gray-700" },
+                        { "id": 5, "type": "Commit", "icon": "GitCommit", "color": "yellow", "action": "View GitHub Commit", "arrowColor": "text-gray-700" },
+                        { "id": 6, "type": "Deployment", "icon": "Rocket", "color": "indigo", "action": "View Vercel Deployment", "arrowColor": "text-red-900/50" },
+                        { "id": 7, "type": "Crash", "icon": "ServerCrash", "color": "red-pulse", "action": "View Datadog Crash Logs", "arrowColor": "text-red-900/50" },
+                        { "id": 8, "type": "Revenue", "icon": "DollarSign", "color": "red-glow", "action": "View Revenue Impact", "arrowColor": null }
+                    ]
+                }
+                "aiInbox": {
+                    "greeting": f"Good Morning.",
+                    "churn": {
+                        "text": "3 customers",
+                        "action": "View Churn Risk"
+                    },
+                    "issue": {
+                        "id": "Issue #823",
+                        "saved": "$420k",
+                        "action": "Open Jira Issue #823"
+                    },
+                    "release": {
+                        "version": "4.7",
+                        "risk": "81% failure risk",
+                        "action": "View Release Failure Risk"
+                    }
+                }
+                "automationCenter": {
+                    "status": "active",
+                    "ifCondition": {
+                        "metric": "Revenue Risk",
+                        "operator": ">",
+                        "value": "$50k"
+                    },
+                    "thenActions": [
+                        { "id": 1, "title": "Create Jira", "icon": "Ticket", "color": "blue", "pulse": False },
+                        { "id": 2, "title": "Notify Slack", "icon": "Hash", "color": "purple", "pulse": False },
+                        { "id": 3, "title": "Assign Eng Manager", "icon": "UserCheck", "color": "green", "pulse": False },
+                        { "id": 4, "title": "Open Incident", "icon": "AlertOctagon", "color": "red", "pulse": True }
+                    ]
+                }
+                "roleBasedCommandCenter": {
+                    "ceoMetrics": [
+                        { "id": 1, "label": "Revenue", "icon": "DollarSign", "value": "$14.2M", "subtext": "+12% MRR Growth", "color": "green" },
+                        { "id": 2, "label": "Total Risk", "icon": "AlertTriangle", "value": "$840k", "subtext": "3 Critical Bugs • 4 Churn Risks", "color": "red" },
+                        { "id": 3, "label": "Growth Target", "icon": "TrendingUp", "value": "108%", "subtext": "On track for Q3 goals", "color": "blue" },
+                        { "id": 4, "label": "Customer Happiness", "icon": "Smile", "value": "92/100", "subtext": "CSAT up by 4 pts this week", "color": "pink" },
+                        { "id": 5, "label": "Eng Velocity", "icon": "Activity", "value": "142 pts", "subtext": "Sprint completion rate: 94%", "color": "orange" },
+                        { "id": 6, "label": "AI Decisions Made", "icon": "Cpu", "value": "1,842", "subtext": "Auto-resolved 41% of tickets", "color": "purple" }
+                    ],
+                    "engBugs": [
+                        { "id": 1, "title": "Stripe Webhook 500", "errorCode": "ERR_PAYMENT_FAIL", "affected": 214, "revImpact": "$420k", "rootCause": "PR #892", "assigneeInitials": "RJ", "assigneeName": "Rahul J.", "eta": "2 hrs", "color": "red" },
+                        { "id": 2, "title": "Video Upload Timeout", "errorCode": "S3_GATEWAY_TIMEOUT", "affected": 93, "revImpact": "$110k", "rootCause": "Env Var Missing", "assigneeInitials": "SK", "assigneeName": "Satyam K.", "eta": "15 min", "color": "orange" }
+                    ],
+                    "pmFeatures": [
+                        { "id": 1, "title": "Offline Mode", "description": "Requested by 2,134 users", "priority": "P0 - Critical", "priorityColor": "red", "effort": "3 Sprints", "revUnlock": "$1.2M", "aiScore": 99, "scoreColor": "blue" },
+                        { "id": 2, "title": "Export to PDF", "description": "Enterprise tier blocker (Notion, Stripe)", "priority": "P1 - High", "priorityColor": "orange", "effort": "1 Sprint", "revUnlock": "$380k", "aiScore": 84, "scoreColor": "purple" }
+                    ]
+                }
+               "aiCompanyBrain": {
+                    "prompt": "Why are customers unhappy?",
+                    "asker": "CEO",
+                    "dataSources": [
+                        {"id": 1, "name": "Slack", "icon": "MessageSquare", "color": "text-[#E01E5A]"},
+                        {"id": 2, "name": "GitHub", "icon": "GitBranch", "color": "text-white"},
+                        {"id": 3, "name": "CRM", "icon": "Users", "color": "text-blue-400"},
+                        {"id": 4, "name": "Zoom", "icon": "Video", "color": "text-blue-500"},
+                        {"id": 5, "name": "Sales Calls", "icon": "PhoneCall", "color": "text-green-500"},
+                        {"id": 6, "name": "Reviews", "icon": "Star", "color": "text-yellow-400"},
+                        {"id": 7, "name": "Crash Logs", "icon": "ServerCrash", "color": "text-red-500"},
+                        {"id": 8, "name": "Analytics", "icon": "BarChart", "color": "text-orange-500"}
+                    ],
+                    "resolution": {
+                        "rootCause": "Video Upload Latency",
+                        "affected": "Premium Customers",
+                        "started": "Tuesday, 11:42 AM",
+                        "reason": "Deployment 4.8",
+                        "revenueRisk": "$1.8M",
+                        "recoveryTime": "18 hours",
+                        "confidence": "98%",
+                        "sourcesVerified": 8,
+                        "actionText": "Execute Rollback Now"
+                    }
+                },
+                "aiTimeline": [
+                    { "id": 1, "icon": "MessageSquare", "color": "gray", "text": "Slack complaints increased", "time": "10:42 AM" },
+                    { "id": 2, "icon": "AlertTriangle", "color": "red", "text": "Crash spike detected", "time": "11:20 AM" },
+                    { "id": 3, "icon": "CheckCircle", "color": "blue", "text": "AI created Jira #823", "time": "12:14 PM" }
+                ]
             }
         }
-
     except Exception as e:
-        print(f"🚨 [Dashboard Stats Error]: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Failed to fetch dashboard stats.") 
-
+        print(f"🚨 Error generating dashboard stats: {e}")
+        return {"status": "error", "message": str(e)}
 class WorkspaceCreate(BaseModel):
     companyName: str
     industry: str
@@ -1661,3 +1797,275 @@ async def create_workspace(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="CRITICAL: Failed to save workspace in Postgres.")
+import uuid
+from fastapi import BackgroundTasks
+from pydantic import BaseModel
+
+# ⚡ In-Memory Job Store (MVP ke liye. Production me Redis use karna)
+sync_jobs = {}
+
+class SyncStartPayload(BaseModel):
+    workspace_id: str
+    integrations: list[str]
+
+async def execute_universal_sync(job_id: str, workspace_id: str, integrations: list[str]):
+    try:
+        total_tools = len(integrations)
+        
+        # 1. Integration Sync Loop
+        for index, tool in enumerate(integrations):
+            sync_jobs[job_id]["current_tool"] = tool.capitalize()
+            sync_jobs[job_id]["stage"] = f"Extracting {tool.capitalize()} Data"
+            sync_jobs[job_id]["logs"].append(f"Initiating {tool} extraction pipeline...")
+            
+            # Yahan tumhara actual connector call aayega
+            # tool_connector = integration_manager.get_integration(tool)
+            # await tool_connector.sync()
+            
+            import asyncio
+            await asyncio.sleep(2) # Simulated sync time per tool
+            
+            sync_jobs[job_id]["logs"].append(f"✅ {tool.capitalize()} synced successfully.")
+            sync_jobs[job_id]["progress"] = int(((index + 1) / total_tools) * 50) # 50% progress for extraction
+
+        # 2. Orchestrator Handoff
+        sync_jobs[job_id]["stage"] = "AI Analysis"
+        sync_jobs[job_id]["current_tool"] = "AgentOS Orchestrator"
+        sync_jobs[job_id]["logs"].append("Normalizing universal signals...")
+        await asyncio.sleep(1)
+        sync_jobs[job_id]["progress"] = 75
+        
+        # await run_orchestrator(...)
+        sync_jobs[job_id]["logs"].append("Causal insights generated by LLM.")
+
+        # 3. Graph DB (Neo4j)
+        sync_jobs[job_id]["stage"] = "Knowledge Graph Update"
+        sync_jobs[job_id]["current_tool"] = "Neo4j Aura"
+        sync_jobs[job_id]["logs"].append("Mapping relationships in GraphDB...")
+        await asyncio.sleep(1)
+        
+        # 4. Completion
+        sync_jobs[job_id]["progress"] = 100
+        sync_jobs[job_id]["stage"] = "Complete"
+        sync_jobs[job_id]["current_tool"] = "Dashboard"
+        sync_jobs[job_id]["logs"].append("🚀 All systems ready. Executive Dashboard unlocked.")
+        sync_jobs[job_id]["status"] = "completed"
+
+    except Exception as e:
+        sync_jobs[job_id]["status"] = "failed"
+        sync_jobs[job_id]["logs"].append(f"🚨 Pipeline crashed: {str(e)}")
+
+
+@app.post("/api/sync/start")
+async def start_sync(payload: SyncStartPayload, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    
+    # Initialize Job State
+    sync_jobs[job_id] = {
+        "status": "running",
+        "stage": "Initializing",
+        "progress": 0,
+        "current_tool": "System",
+        "logs": ["Booting up AgentOS Sync Engine..."]
+    }
+    
+    # Fire and Forget
+    background_tasks.add_task(execute_universal_sync, job_id, payload.workspace_id, payload.integrations)
+    
+    return {"status": "success", "job_id": job_id}
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    if job_id not in sync_jobs:
+        return {"status": "error", "message": "Job not found"}
+    return sync_jobs[job_id] 
+import json
+import asyncio
+from fastapi import BackgroundTasks
+from pydantic import BaseModel
+
+# Schema for starting the sync
+class SyncStartPayload(BaseModel):
+    workspace_id: str
+
+# ==========================================
+# 🚀 THE REAL-TIME BACKGROUND SYNC ENGINE
+# ==========================================
+import time
+
+async def execute_mission_control_sync(workspace_id: str):
+    # Fetch real connected apps and agents from DB here
+    connected_apps = ["GitHub", "Jira", "Slack"] # Dynamic array
+    active_agents = ["Cleaner Agent", "Theme Agent", "Revenue Agent", "Knowledge Graph"] # Dynamic array
+
+    # 1. 🧠 IN-MEMORY UNIVERSAL STATE
+    engine_state = {
+        "overallProgress": 0,
+        "eta": "Estimating...",
+        "isCoreComplete": False,
+        "apps": [{"name": app, "status": "waiting", "progress": 0, "items": "Waiting"} for app in connected_apps],
+        "agents": [{"name": agent, "status": "waiting"} for agent in active_agents],
+        "metrics": {"repos": 0, "issues": 0, "prs": 0, "commits": 0},
+        "dataQuality": {"collected": 0, "normalized": 0, "embedded": 0, "graphNodes": 0, "relationships": 0},
+        "earlyFindings": [],
+        "logs": []
+    }
+
+    # Helper function to push the entire state to frontend
+    async def push_state():
+        await ws_manager.broadcast(json.dumps({"type": "UNIVERSAL_STATE_UPDATE", "data": engine_state}))
+
+    def add_log(source, msg):
+        now = time.strftime("%H:%M:%S")
+        engine_state["logs"].append({"time": now, "source": source, "msg": msg})
+
+    try:
+        # --- INITIALIZATION ---
+        add_log("System", f"Booting AgentOS Universal Sync Engine for workspace {workspace_id}...")
+        engine_state["eta"] = f"{(len(connected_apps) * 15 + len(active_agents) * 10)} sec"
+        await push_state()
+        await asyncio.sleep(1)
+
+        # --- DYNAMIC APP PIPELINE ---
+        for i, app in enumerate(engine_state["apps"]):
+            app["status"] = "syncing"
+            app["items"] = "Extracting..."
+            add_log(app["name"], f"Connecting and pulling real-time data from {app['name']}...")
+            await push_state()
+            
+            # 🔥 (YOUR ACTUAL SYNC CALL HERE) await connector.sync()
+            await asyncio.sleep(2) 
+            
+            app["progress"] = 100
+            app["status"] = "done"
+            app["items"] = "Synced"
+            engine_state["dataQuality"]["collected"] += 15200 # Update dynamic metrics
+            engine_state["overallProgress"] = int(((i + 1) / len(connected_apps)) * 50) # 50% for apps
+            await push_state()
+
+        # --- DYNAMIC AI AGENTS PIPELINE ---
+        for i, agent in enumerate(engine_state["agents"]):
+            agent["status"] = "running"
+            add_log(agent["name"], f"Executing {agent['name']} pipeline...")
+            await push_state()
+            
+            # 🔥 (YOUR ACTUAL AGENT LOGIC HERE) 
+            await asyncio.sleep(2)
+            
+            if agent["name"] == "Theme Agent":
+                engine_state["earlyFindings"].append({"label": "Top Theme", "value": "API Rate Limits"})
+            elif agent["name"] == "Knowledge Graph":
+                engine_state["dataQuality"]["graphNodes"] += 4500
+                engine_state["dataQuality"]["relationships"] += 12300
+
+            agent["status"] = "done"
+            engine_state["overallProgress"] = 50 + int(((i + 1) / len(active_agents)) * 50) # 50% for agents
+            await push_state()
+
+        # --- COMPLETION ---
+        add_log("System", "Universal Sync Complete. Handing off to Executive Dashboard.")
+        engine_state["overallProgress"] = 100
+        engine_state["eta"] = "Ready"
+        engine_state["isCoreComplete"] = True
+        await push_state()
+
+    except Exception as e:
+        add_log("System Error", f"CRITICAL: {str(e)}")
+        await push_state()
+
+# ==========================================
+# 🚀 API ROUTE TO TRIGGER THE PIPELINE
+# ==========================================
+@app.post("/api/sync/start")
+async def start_mission_control(
+    payload: SyncStartPayload, 
+    background_tasks: BackgroundTasks,
+    auth_payload: dict = Depends(verify_clerk_user) # Secure endpoint
+):
+    print(f"\n🚀 [Mission Control] Starting Enterprise Sync for {payload.workspace_id}")
+    
+    # Send task to background so the HTTP request completes instantly
+    background_tasks.add_task(execute_mission_control_sync, payload.workspace_id)
+    
+    return {"status": "success", "message": "Mission Control Sync Initiated via WebSockets"} 
+from fastapi import APIRouter, Depends
+from typing import Dict, Any
+
+# Assuming you have a router or just use your main `app` instance
+# router = APIRouter()
+
+@app.get("/api/dashboard/insights")
+async def get_dashboard_insights():
+    """
+    Frontend is API ko call karega. 
+    Frontend me zero business logic hai, wo bas is JSON ko render karega.
+    """
+    
+    # 🧠 Yahan tumhara AgentOS logic aayega (Neo4j se query karna ya Agent ko run karna)
+    # Example: 
+    # raw_nodes = await graph_manager.get_high_severity_clusters()
+    # clusters = await groq_client.analyze(raw_nodes)
+
+    # Abhi ke liye API strict enterprise format me data bhej rahi hai 
+    # (Jisko tum apne graph_manager ke real data se replace kar doge)
+    
+    return {
+        "status": "success",
+        "data": {
+            # 1. For Customer Pain Explorer
+            "customerPainData": {
+                "keywords": ["Login Timeout", "Payment Gateway", "Data Sync", "PDF Export", "S3 Upload"],
+                "clusters": [
+                    { 
+                        "id": 1, 
+                        "name": "Stripe Webhook Failure", 
+                        "users": 214, 
+                        "severity": "high" # Frontend dynamically makes this Red
+                    },
+                    { 
+                        "id": 2, 
+                        "name": "S3 Video Upload Lag", 
+                        "users": 93, 
+                        "severity": "medium" # Frontend dynamically makes this Orange
+                    },
+                    { 
+                        "id": 3, 
+                        "name": "Dark Mode Glitch", 
+                        "users": 61, 
+                        "severity": "low" # Frontend dynamically makes this Blue
+                    }
+                ]
+            },
+            
+            # 2. For Product Opportunity Engine
+            "productOpportunities": [
+                { 
+                    "id": 1, 
+                    "rank": "#1", 
+                    "title": "Offline Mode", 
+                    "subtitle": "High demand from enterprise clients", 
+                    "userCount": "2,134", 
+                    "color": "green", 
+                    "score": 92 
+                },
+                { 
+                    "id": 2, 
+                    "rank": "#2", 
+                    "title": "PDF Export", 
+                    "subtitle": "Frequent blocker for finance teams", 
+                    "userCount": "1,811", 
+                    "color": "blue", 
+                    "score": 78 
+                },
+                { 
+                    "id": 3, 
+                    "rank": "#3", 
+                    "title": "API Rate Limit Increase", 
+                    "subtitle": "Developer feature request", 
+                    "userCount": "721", 
+                    "color": "purple", 
+                    "score": 45 
+                }
+            ]
+        }
+    }              

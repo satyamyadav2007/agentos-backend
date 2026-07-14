@@ -1,83 +1,77 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import GitHubAuthManager
-from .discovery import GitHubDiscovery
-from .extractors.issues import GitHubIssuesExtractor
-from .extractors.prs import GitHubPRExtractor      # ⚡ Naya import
-from .normalizer import GitHubNormalizer  
-        # ⚡ Naya import
+from .oauth import GitHubOAuthManager
+from .client import GitHubClient
+from .services.sync_service import GitHubSyncService
 
 class GitHubConnector(BaseConnector):
+    """Orchestrates the GitHub integration lifecycle."""
+    
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.auth_manager = GitHubAuthManager()
-        self.installation_id = None 
-        self.access_token = None
+        self.oauth_manager = GitHubOAuthManager()
+        self.github_client = None
+        self.installation_id = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Triggered when user installs the GitHub App."""
         self.installation_id = auth_payload.get("installation_id")
+        
         if not self.installation_id:
             return {"status": "error", "message": "Missing installation_id"}
+            
         try:
-            self.access_token = self.auth_manager.get_installation_token(self.installation_id)
-            return {"status": "connected", "provider": "github"}
+            # 1. Exchange installation_id for an API token
+            # ⚡ FIX: Removed 'await' because get_installation_token is a synchronous requests call
+            token = self.oauth_manager.get_installation_token(self.installation_id)
+            
+            # 2. Initialize the Centralized Client
+            self.github_client = GitHubClient(access_token=token)
+            
+            # 3. Trigger initial sync immediately after connect
+            # Passing user_email if it's available in the payload
+            user_email = auth_payload.get("user_email")
+            sync_result = await self.sync(user_email=user_email)
+            
+            return {
+                "status": "connected",
+                "provider": "github",
+                "sync_info": sync_result
+            }
         except Exception as e:
+            print(f"🚨 [GitHub Connector Error]: {e}")
             return {"status": "error", "message": str(e)}
 
-    # ==========================================
-    # 🔄 DATA PIPELINE: Discovery -> Extract -> Normalize
-    # ==========================================
-    async def sync(self) -> Dict[str, Any]:
-        if not self.access_token:
+    # ⚡ FIX: Added user_email parameter with a default value
+    async def sync(self, user_email: str = None) -> Dict[str, Any]:
+        """Runs the full data extraction and AI handoff pipeline."""
+        if not self.github_client or not self.installation_id:
             return {"status": "error", "message": "Not authenticated"}
-
-        discovery_engine = GitHubDiscovery(token=self.access_token)
-        repos = discovery_engine.fetch_repositories()
-        
-        issues_engine = GitHubIssuesExtractor(token=self.access_token)
-        prs_engine = GitHubPRExtractor(token=self.access_token)
-        
-        normalized_events = []
-        
-        for repo in repos:
-            repo_name = repo["full_name"]
             
-            # 1. Fetch & Normalize Issues
-            raw_issues = issues_engine.fetch_issues(repo_full_name=repo_name)
-            for issue in raw_issues:
-                normalized = GitHubNormalizer.normalize_issue(issue, repo_name)
-                normalized_events.append(normalized)
-                
-            # 2. Fetch & Normalize PRs
-            raw_prs = prs_engine.fetch_prs(repo_full_name=repo_name)
-            for pr in raw_prs:
-                normalized = GitHubNormalizer.normalize_pr(pr, repo_name)
-                normalized_events.append(normalized)
-            
-        # ... connector.py ka baaki sync() code ...
-    
-        print(f"\n🧠 [AgentOS Brain] Normalized {len(normalized_events)} total events from GitHub!")
+        # 1. Initialize Sync Service (The Brain)
+        sync_service = GitHubSyncService(self.github_client)
         
-        # Agar data hai, toh AgentOS Orchestrator (AI) ko trigger karo!
+        # 2. Run extraction and normalization
+        normalized_events = await sync_service.run_full_sync(self.installation_id)
+        
+        # 3. Handoff to AgentOS Orchestrator
         if normalized_events:
-            print("⚙️ [AgentOS] Handoff to AI Orchestrator started...")
+            print(f"⚙️ [AgentOS] Handoff to AI Orchestrator started for GitHub data (User: {user_email})...")
+            from orchestrator import run_orchestrator
             
-            # ⚡ FIX: Import ko yahan andar daalo taaki Circular Import error na aaye!
-            from orchestrator import run_orchestrator 
-            
-            # Email abhi ke liye dummy pass kar rahe hain
-            orchestrator_result = await run_orchestrator(github_issues=normalized_events, user_email="satyam@startup.com")
-            print("✅ [AgentOS] AI Processing Complete for Sync!")
+            # ⚡ FIX: Replaced hardcoded email with the dynamic user_email
+            target_email = user_email or "fallback@domain.com"
+            await run_orchestrator(github_issues=normalized_events, user_email=target_email)
+            print("✅ [AgentOS] AI Processing Complete for GitHub Sync!")
             
         return {
             "status": "synced",
-            "repositories_found": len(repos),
-            "events_processed": len(normalized_events)
+            "events_processed": len(normalized_events) if normalized_events else 0
         }
 
     async def webhook(self, payload: Dict[str, Any]) -> bool:
+        # The webhook logic is handled in webhook.py and routed from main.py
         pass
+
     async def disconnect(self) -> bool:
-        pass
-    async def normalize(self, raw_data: Any) -> Any:
         pass
