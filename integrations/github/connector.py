@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import GitHubOAuthManager
+from .oauth import GitHubAuthManager
 from .client import GitHubClient
 from .services.sync_service import GitHubSyncService
 
@@ -9,7 +9,7 @@ class GitHubConnector(BaseConnector):
     
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = GitHubOAuthManager()
+        self.oauth_manager = GitHubAuthManager()
         self.github_client = None
         self.installation_id = None
 
