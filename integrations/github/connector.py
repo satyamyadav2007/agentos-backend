@@ -69,6 +69,11 @@ class GitHubConnector(BaseConnector):
             "events_processed": len(normalized_events) if normalized_events else 0
         }
 
+    # 🚨 FIX: Added the missing abstract method to prevent the 500 error
+    def normalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalizes GitHub data to match the AgentOS internal schema."""
+        return data
+
     async def webhook(self, payload: Dict[str, Any]) -> bool:
         # The webhook logic is handled in webhook.py and routed from main.py
         pass
