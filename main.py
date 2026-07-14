@@ -1618,7 +1618,7 @@ async def get_dashboard_stats(
                     "crashIncrease": "28%",
                     "revenueImpact": formatted_revenue,
                     "aiAction": "Rollback Release 4.8.1"
-                }
+                },
                 "meetingIntelligence": {
                     "title": "Weekly All-Hands",
                     "lastSync": "45 mins ago",
@@ -1628,7 +1628,7 @@ async def get_dashboard_stats(
                         { "id": 3, "role": "Engineering", "status": "Blocked", "context": "Pending API resolution", "color": "red", "pulse": True },
                         { "id": 4, "role": "Marketing", "status": "Waiting", "context": "Needs product sign-off", "color": "blue", "pulse": False }
                     ]
-                }
+                },
                 "rootCauseGraph": {
                     "incidentId": "Incident #823-Alpha",
                     "title": "Root Cause Graph",
@@ -1642,7 +1642,7 @@ async def get_dashboard_stats(
                         { "id": 7, "type": "Crash", "icon": "ServerCrash", "color": "red-pulse", "action": "View Datadog Crash Logs", "arrowColor": "text-red-900/50" },
                         { "id": 8, "type": "Revenue", "icon": "DollarSign", "color": "red-glow", "action": "View Revenue Impact", "arrowColor": null }
                     ]
-                }
+                },
                 "aiInbox": {
                     "greeting": f"Good Morning.",
                     "churn": {
@@ -1659,7 +1659,7 @@ async def get_dashboard_stats(
                         "risk": "81% failure risk",
                         "action": "View Release Failure Risk"
                     }
-                }
+                },
                 "automationCenter": {
                     "status": "active",
                     "ifCondition": {
@@ -1673,7 +1673,7 @@ async def get_dashboard_stats(
                         { "id": 3, "title": "Assign Eng Manager", "icon": "UserCheck", "color": "green", "pulse": False },
                         { "id": 4, "title": "Open Incident", "icon": "AlertOctagon", "color": "red", "pulse": True }
                     ]
-                }
+                },
                 "roleBasedCommandCenter": {
                     "ceoMetrics": [
                         { "id": 1, "label": "Revenue", "icon": "DollarSign", "value": "$14.2M", "subtext": "+12% MRR Growth", "color": "green" },
@@ -1691,7 +1691,7 @@ async def get_dashboard_stats(
                         { "id": 1, "title": "Offline Mode", "description": "Requested by 2,134 users", "priority": "P0 - Critical", "priorityColor": "red", "effort": "3 Sprints", "revUnlock": "$1.2M", "aiScore": 99, "scoreColor": "blue" },
                         { "id": 2, "title": "Export to PDF", "description": "Enterprise tier blocker (Notion, Stripe)", "priority": "P1 - High", "priorityColor": "orange", "effort": "1 Sprint", "revUnlock": "$380k", "aiScore": 84, "scoreColor": "purple" }
                     ]
-                }
+                },
                "aiCompanyBrain": {
                     "prompt": "Why are customers unhappy?",
                     "asker": "CEO",
