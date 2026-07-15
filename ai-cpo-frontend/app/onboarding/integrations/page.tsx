@@ -333,9 +333,47 @@ function IntegrationsContent() {
     }, 1500);
   };
 
-  const handleNext = () => {
-    // Ye line tumhe tumhare us "Mission Control" / Bootstrapping Engine page par le jayegi
-    router.push('/onboarding/sync'); 
+  // ==========================================
+  // 🚀 START DATA SYNC (Mission Control Trigger)
+  // ==========================================
+  const handleNext = async () => {
+    try {
+      // 1. Clerk se fresh token lo
+      const token = await getToken();
+      const workspaceId = typeof window !== 'undefined' ? localStorage.getItem('agentos_workspace_id') : "default_workspace";
+
+      if (!token) {
+        console.error("🚨 Auth Token missing!");
+        return;
+      }
+
+      console.log("🚀 Initiating Mission Control Sync...");
+
+      // 2. Backend ko token ke sath Secure Request bhejo
+      const response = await fetch('https://agentos-api-5suh.onrender.com/api/sync/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // ⚡ Ye line 401 error ko hamesha ke liye fix kar degi
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          integrations: connectedTools
+        })
+      });
+
+      if (!response.ok) {
+        console.error("🚨 Backend rejected sync start:", await response.text());
+      } else {
+        console.log("✅ Sync started successfully on backend!");
+      }
+
+    } catch (error) {
+      console.error("🚨 Error triggering sync:", error);
+    } finally {
+      // 3. Sab hone ke baad user ko Sync Page par bhej do
+      router.push('/onboarding/sync');
+    }
   };
 
   return (

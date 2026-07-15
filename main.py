@@ -362,26 +362,26 @@ from fastapi.responses import JSONResponse
 
 # ⚡ Dhyan rahe ki verify_clerk_user, ConnectPayload aur integration_manager imported ho
 
-@app.post("/api/integrations/{provider}/connect")
+@app.post("/api/integrations/github/connect")
 async def connect_tool(
-    provider: str, 
+    github: str, 
     payload: ConnectPayload,
     auth_payload: dict = Depends(verify_clerk_user) # 🔒 1. Endpoint secured via Clerk
 ):
-    print(f"\n🔗 [AgentOS Integration] Connecting '{provider}' for workspace: {payload.workspace_id}")
+    print(f"\n🔗 [AgentOS Integration] Connecting '{github}' for workspace: {payload.workspace_id}")
     
     try:
         # ⚡ 2. Clerk Auth se Org ID nikalna
         org_id = auth_payload.get("org_id", "default_org")
         
         # ⚡ 3. Sirf EK baar connector initialize karo
-        connector_instance = integration_manager._registry[provider.lower()](
+        connector_instance = integration_manager._registry[github.lower()](
             workspace_id=payload.workspace_id, 
             org_id=org_id
         )
         
         # ⚡ 4. GitHub ke liye Private Key set karna (PEM file ka error fix)
-        if provider.lower() == "github":
+        if github.lower() == "github":
             private_key = os.getenv("GITHUB_PRIVATE_KEY")
             
             if not private_key:
@@ -420,7 +420,7 @@ async def connect_tool(
             
         return {
             "status": "connected",
-            "provider": provider,
+            "provider": github,
             "sync_info": sync_result
         }
         
@@ -479,8 +479,7 @@ async def github_live_webhook(request: Request):
 class JiraConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
-    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
-
+    redirect_uri: Optional[str] = None  # ⚡ Ye line add karo
 # ==========================================
 # 🔌 JIRA OAUTH ROUTE
 # ==========================================
@@ -524,8 +523,7 @@ async def jira_live_webhook(request: Request):
 class SlackConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
-    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
-
+    redirect_uri: Optional[str] = None
 # ==========================================
 # 💬 SLACK OAUTH ROUTE
 # ==========================================
@@ -1913,9 +1911,7 @@ import asyncio
 from fastapi import BackgroundTasks
 from pydantic import BaseModel
 
-# Schema for starting the sync
-class SyncStartPayload(BaseModel):
-    workspace_id: str
+
 
 # ==========================================
 # 🚀 THE REAL-TIME BACKGROUND SYNC ENGINE
