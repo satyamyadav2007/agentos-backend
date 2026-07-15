@@ -362,56 +362,45 @@ from fastapi.responses import JSONResponse
 
 # ⚡ Dhyan rahe ki verify_clerk_user, ConnectPayload aur integration_manager imported ho
 
+# ⚡ THE FIXED GITHUB ROUTE
 @app.post("/api/integrations/github/connect")
 async def connect_tool(
-    github: str, 
+    # github: str,  <-- ❌ Is line ko delete kar diya gaya hai
     payload: ConnectPayload,
-    auth_payload: dict = Depends(verify_clerk_user) # 🔒 1. Endpoint secured via Clerk
+    auth_payload: dict = Depends(verify_clerk_user) 
 ):
-    print(f"\n🔗 [AgentOS Integration] Connecting '{github}' for workspace: {payload.workspace_id}")
+    # 'github' variable ki jagah seedha string "github" use kiya hai
+    print(f"\n🔗 [AgentOS Integration] Connecting 'github' for workspace: {payload.workspace_id}")
     
     try:
-        # ⚡ 2. Clerk Auth se Org ID nikalna
         org_id = auth_payload.get("org_id", "default_org")
         
-        # ⚡ 3. Sirf EK baar connector initialize karo
-        connector_instance = integration_manager._registry[github.lower()](
+        # 'github.lower()' ki jagah seedha "github" paas kiya
+        connector_instance = integration_manager._registry["github"](
             workspace_id=payload.workspace_id, 
             org_id=org_id
         )
         
-        # ⚡ 4. GitHub ke liye Private Key set karna (PEM file ka error fix)
-        if github.lower() == "github":
-            private_key = os.getenv("GITHUB_PRIVATE_KEY")
-            
-            if not private_key:
-                raise Exception("🚨 GITHUB_PRIVATE_KEY environment variable is missing! Render par add karo.")
-            
-            # Format fix karna (\n literals ko actual newlines me convert karna)
-            private_key = private_key.replace('\\n', '\n')
-            
-            # Connector ko string wali key pakda do taaki wo file na dhoondhe
-            connector_instance.auth_manager.private_key = private_key
+        # Provider directly check karne ki zaroorat nahi kyunki ye route hi github ka hai
+        private_key = os.getenv("GITHUB_PRIVATE_KEY")
+        
+        if not private_key:
+            raise Exception("🚨 GITHUB_PRIVATE_KEY environment variable is missing! Render par add karo.")
+        
+        private_key = private_key.replace('\\n', '\n')
+        
+        connector_instance.auth_manager.private_key = private_key
+        token_response = connector_instance.auth_manager.get_installation_token(payload.installation_id)
+        connector_instance.access_token = token_response.get("token") if isinstance(token_response, dict) else token_response
 
-            # Token fetch karo
-            token_response = connector_instance.auth_manager.get_installation_token(payload.installation_id)
-    
-            connector_instance.access_token = token_response.get("token") if isinstance(token_response, dict) else token_response
-
-            if not connector_instance.access_token:
-                raise Exception("Failed to generate GitHub Access Token")
-
-        # 👉 YAHAN FUTURE MEIN DB SAVE AAYEGA: db.session.add(...)
+        if not connector_instance.access_token:
+            raise Exception("Failed to generate GitHub Access Token")
 
         sync_result = None
         
-        # ⚡ 5. Sync ko try-except mein dala taaki error aane par 500 na fate
         try:
             print("⏳ Triggering initial sync...")
-            # Real email Clerk token se nikalna (Hardcoded "satyam@startup.com" hatane ke liye)
             real_email = auth_payload.get("email_addresses", [{"email_address": "fallback@domain.com"}])[0]["email_address"]
-            
-            # Sync call
             sync_result = await connector_instance.sync(user_email=real_email)
             print("✅ Sync completed successfully")
         except Exception as sync_err:
@@ -420,13 +409,15 @@ async def connect_tool(
             
         return {
             "status": "connected",
-            "provider": github,
+            "provider": "github",
             "sync_info": sync_result
         }
         
     except Exception as e:
         print(f"🚨 [Integration Error]: {e}")
+        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
+        
 class IntegrationRequest(BaseModel):
     platform: str
     user_email: str
