@@ -1770,7 +1770,7 @@ async def get_dashboard_stats(
     except Exception as e:
         print(f"🚨 Error generating dashboard stats: {e}")
         return {"status": "error", "message": str(e)}
-        
+
 class WorkspaceCreate(BaseModel):
     companyName: str
     industry: str
@@ -2106,6 +2106,22 @@ async def execute_mission_control_sync(workspace_id: str, user_email: str, reque
             agent["status"] = "done"
             engine_state["overallProgress"] = int(((total_apps + i + 1) / (total_apps + len(engine_state["agents"]))) * 100)
             await push_state()
+
+        # ==========================================
+        # ✅ PHASE 3: COMPLETION
+        # ==========================================
+        add_log("System", "Universal Knowledge Graph built successfully. Executive Dashboard unlocked.")
+        engine_state["overallProgress"] = 100
+        engine_state["eta"] = "Ready"
+        engine_state["isCoreComplete"] = True
+        await push_state()
+
+    # ⚡ YE OUTER EXCEPT BLOCK MISSING THA JISKI WAJAH SE SYNTAX ERROR AAYA ⚡
+    except Exception as e:
+        add_log("System Error", f"CRITICAL KERNEL PANIC: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        await push_state()
 # ==========================================
 # 🚀 THE API ROUTE TRIGGER
 # ==========================================
