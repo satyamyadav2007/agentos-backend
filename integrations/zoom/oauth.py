@@ -2,7 +2,7 @@ import os
 import httpx
 import base64
 
-class ZoomOAuthManager:
+class ZoomAuthManager:
     """Handles Zoom Server-to-Server OAuth flow for Enterprise accounts."""
     
     def __init__(self):

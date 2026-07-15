@@ -1,7 +1,7 @@
 import os
 import httpx
 
-class SalesforceOAuthManager:
+class SalesforceAuthManager:
     """Handles Salesforce OAuth 2.0 flow for Connected Apps."""
     
     def __init__(self):

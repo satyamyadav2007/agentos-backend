@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import ZendeskOAuthManager
+from .oauth import ZendeskAuthManager
 from .client import ZendeskClient
 from .services.sync_service import ZendeskSyncService
 
 class ZendeskConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = ZendeskOAuthManager()
+        self.auth_manager = ZendeskAuthManager()
         self.zendesk_client = None
         self.subdomain = None
 
@@ -19,7 +19,7 @@ class ZendeskConnector(BaseConnector):
             return {"status": "error", "message": "Missing auth_code or subdomain"}
             
         try:
-            token = await self.oauth_manager.authenticate(auth_code, self.subdomain)
+            token = await self.auth_manager.authenticate(auth_code, self.subdomain)
             self.zendesk_client = ZendeskClient(subdomain=self.subdomain, access_token=token, is_oauth=True)
             
             # Trigger initial sync immediately after connect

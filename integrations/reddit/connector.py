@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import RedditOAuthManager
+from .oauth import RedditAuthManager
 from .client import RedditClient
 from .services.sync_service import RedditSyncService
 
 class RedditConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = RedditOAuthManager()
+        self.auth_manager = RedditAuthManager()
         self.reddit_client = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -17,7 +17,7 @@ class RedditConnector(BaseConnector):
             
         try:
             # 1. Get Token
-            token = await self.oauth_manager.authenticate(auth_code)
+            token = await self.auth_manager.authenticate(auth_code)
             
             # 2. Initialize Client
             self.reddit_client = RedditClient(access_token=token)

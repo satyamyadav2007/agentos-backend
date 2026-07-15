@@ -2,7 +2,7 @@ import os
 import httpx
 from typing import Dict, Any, Tuple
 
-class JiraOAuthManager:
+class JiraAuthManager:
     """Handles Atlassian 3LO (OAuth 2.0) flow and Cloud ID discovery."""
     
     def __init__(self):

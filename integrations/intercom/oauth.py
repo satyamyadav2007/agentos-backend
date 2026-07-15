@@ -1,7 +1,7 @@
 import os
 import httpx
 
-class IntercomOAuthManager:
+class IntercomAuthManager:
     """Handles Intercom OAuth 2.0 flow."""
     
     def __init__(self):

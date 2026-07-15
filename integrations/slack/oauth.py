@@ -1,7 +1,7 @@
 import os
 import httpx
 
-class SlackOAuthManager:
+class SlackAuthManager:
     def __init__(self):
         self.client_id = os.getenv("SLACK_CLIENT_ID")
         self.client_secret = os.getenv("SLACK_CLIENT_SECRET")

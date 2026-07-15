@@ -251,7 +251,16 @@ class JiraExportPayload(BaseModel):
 @app.get("/")
 async def root():
     return {"message": "Welcome to AgentOS API! The engine is running."}
+# --- MISSING UI ROUTES FIX ---
+@app.get("/api/integrations/status")
+async def get_integration_status(workspace_id: str):
+    # Future me DB query aayegi, abhi UI crash hone se bachane ke liye empty array bhejenge
+    return {"status": "success", "workspace_id": workspace_id, "integrations": []}
 
+@app.get("/api/agents/active")
+async def get_active_agents(workspace_id: str):
+    # Future me DB query aayegi
+    return {"status": "success", "workspace_id": workspace_id, "active_agents": []}
 @app.get("/health")
 def system_health_check():
     return {
@@ -469,6 +478,7 @@ async def github_live_webhook(request: Request):
 class JiraConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
+    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
 
 # ==========================================
 # 🔌 JIRA OAUTH ROUTE
@@ -483,7 +493,7 @@ async def connect_jira(payload: JiraConnectPayload):
             integration_name="jira",
             workspace_id=payload.workspace_id,
             org_id="org_dummy_123", 
-            auth_payload={"auth_code": payload.auth_code}
+            auth_payload={"auth_code": payload.auth_code, "redirect_uri": payload.redirect_uri}
         )
         return result
         
@@ -510,10 +520,10 @@ async def jira_live_webhook(request: Request):
         return {"status": "error", "message": str(e)}                        
 # main.py ke andar
 
-# Naya schema Slack ke liye
 class SlackConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
+    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
 
 # ==========================================
 # 💬 SLACK OAUTH ROUTE
@@ -646,6 +656,7 @@ from integrations.hubspot.webhook import hubspot_webhook_handler
 class HubSpotConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
+    redirect_uri: Optional[str] = None  # ✅ Allowed extra field 
 
 # 🟠 HUBSPOT OAUTH ROUTE
 @app.post("/api/integrations/hubspot/connect")
@@ -677,6 +688,7 @@ from integrations.intercom.webhook import intercom_webhook_handler
 class IntercomConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
+    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
 
 # 💬 INTERCOM OAUTH ROUTE
 @app.post("/api/integrations/intercom/connect")
@@ -735,6 +747,7 @@ async def discord_live_webhook(request: Request):
 class RedditConnectPayload(BaseModel):
     auth_code: str
     workspace_id: str
+    redirect_uri: Optional[str] = None
 
 # 🔍 REDDIT OAUTH ROUTE
 @app.post("/api/integrations/reddit/connect")
@@ -1806,7 +1819,7 @@ sync_jobs = {}
 
 class SyncStartPayload(BaseModel):
     workspace_id: str
-    integrations: list[str]
+    integrations: Optional[List[str]] = []
 
 async def execute_universal_sync(job_id: str, workspace_id: str, integrations: list[str]):
     try:
@@ -1857,10 +1870,15 @@ async def execute_universal_sync(job_id: str, workspace_id: str, integrations: l
 
 
 @app.post("/api/sync/start")
-async def start_sync(payload: SyncStartPayload, background_tasks: BackgroundTasks):
-    job_id = str(uuid.uuid4())
+async def start_unified_sync(
+    payload: SyncStartPayload, 
+    background_tasks: BackgroundTasks,
+    auth_payload: dict = Depends(verify_clerk_user) # 🔒 Secure endpoint (Clerk Auth)
+):
+    print(f"\n🚀 [Mission Control] Starting Enterprise Sync for {payload.workspace_id}")
     
-    # Initialize Job State
+    # --- Part A: Polling Logic Setup (Job ID) ---
+    job_id = str(uuid.uuid4())
     sync_jobs[job_id] = {
         "status": "running",
         "stage": "Initializing",
@@ -1869,10 +1887,19 @@ async def start_sync(payload: SyncStartPayload, background_tasks: BackgroundTask
         "logs": ["Booting up AgentOS Sync Engine..."]
     }
     
-    # Fire and Forget
+    # Trigger Polling Background Task
     background_tasks.add_task(execute_universal_sync, job_id, payload.workspace_id, payload.integrations)
     
-    return {"status": "success", "job_id": job_id}
+    # --- Part B: Mission Control (WebSockets) Setup ---
+    # Trigger WebSockets Background Task
+    background_tasks.add_task(execute_mission_control_sync, payload.workspace_id)
+    
+    # Return both messages and job_id so frontend can use either method
+    return {
+        "status": "success", 
+        "message": "Mission Control Sync Initiated via WebSockets & Polling",
+        "job_id": job_id
+    }
 
 @app.get("/api/jobs/{job_id}")
 async def get_job_status(job_id: str):
@@ -1973,21 +2000,7 @@ async def execute_mission_control_sync(workspace_id: str):
         add_log("System Error", f"CRITICAL: {str(e)}")
         await push_state()
 
-# ==========================================
-# 🚀 API ROUTE TO TRIGGER THE PIPELINE
-# ==========================================
-@app.post("/api/sync/start")
-async def start_mission_control(
-    payload: SyncStartPayload, 
-    background_tasks: BackgroundTasks,
-    auth_payload: dict = Depends(verify_clerk_user) # Secure endpoint
-):
-    print(f"\n🚀 [Mission Control] Starting Enterprise Sync for {payload.workspace_id}")
-    
-    # Send task to background so the HTTP request completes instantly
-    background_tasks.add_task(execute_mission_control_sync, payload.workspace_id)
-    
-    return {"status": "success", "message": "Mission Control Sync Initiated via WebSockets"} 
+
 from fastapi import APIRouter, Depends
 from typing import Dict, Any
 

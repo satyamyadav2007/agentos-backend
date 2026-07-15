@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import SalesforceOAuthManager
+from .oauth import SalesforceAuthManager
 from .client import SalesforceClient
 from .services.sync_service import SalesforceSyncService
 
 class SalesforceConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = SalesforceOAuthManager()
+        self.auth_manager = SalesforceAuthManager()
         self.sf_client = None
         self.instance_url = None
 
@@ -18,7 +18,7 @@ class SalesforceConnector(BaseConnector):
             
         try:
             # 1. Exchange token
-            token, instance_url = await self.oauth_manager.authenticate(auth_code)
+            token, instance_url = await self.auth_manager.authenticate(auth_code)
             self.instance_url = instance_url
             
             # 2. Initialize the Centralized Client

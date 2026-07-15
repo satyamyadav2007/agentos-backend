@@ -2,7 +2,7 @@ import os
 import httpx
 import base64
 
-class RedditOAuthManager:
+class RedditAuthManager:
     """Handles Reddit OAuth 2.0 flow."""
     
     def __init__(self):

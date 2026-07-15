@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from integrations.base import BaseConnector
 from .oauth import GitHubAuthManager
 from .client import GitHubClient
@@ -9,7 +9,8 @@ class GitHubConnector(BaseConnector):
     
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = GitHubAuthManager()
+        # ⚡ FIX: Renamed 'oauth_manager' to 'auth_manager' to resolve the 500 Error
+        self.auth_manager = GitHubAuthManager()
         self.github_client = None
         self.installation_id = None
 
@@ -22,14 +23,13 @@ class GitHubConnector(BaseConnector):
             
         try:
             # 1. Exchange installation_id for an API token
-            # ⚡ FIX: Removed 'await' because get_installation_token is a synchronous requests call
-            token = self.oauth_manager.get_installation_token(self.installation_id)
+            # ⚡ FIX: Updated to use self.auth_manager
+            token = self.auth_manager.get_installation_token(self.installation_id)
             
             # 2. Initialize the Centralized Client
             self.github_client = GitHubClient(access_token=token)
             
             # 3. Trigger initial sync immediately after connect
-            # Passing user_email if it's available in the payload
             user_email = auth_payload.get("user_email")
             sync_result = await self.sync(user_email=user_email)
             
@@ -42,8 +42,7 @@ class GitHubConnector(BaseConnector):
             print(f"🚨 [GitHub Connector Error]: {e}")
             return {"status": "error", "message": str(e)}
 
-    # ⚡ FIX: Added user_email parameter with a default value
-    async def sync(self, user_email: str = None) -> Dict[str, Any]:
+    async def sync(self, user_email: Optional[str] = None) -> Dict[str, Any]:
         """Runs the full data extraction and AI handoff pipeline."""
         if not self.github_client or not self.installation_id:
             return {"status": "error", "message": "Not authenticated"}
@@ -59,7 +58,6 @@ class GitHubConnector(BaseConnector):
             print(f"⚙️ [AgentOS] Handoff to AI Orchestrator started for GitHub data (User: {user_email})...")
             from orchestrator import run_orchestrator
             
-            # ⚡ FIX: Replaced hardcoded email with the dynamic user_email
             target_email = user_email or "fallback@domain.com"
             await run_orchestrator(github_issues=normalized_events, user_email=target_email)
             print("✅ [AgentOS] AI Processing Complete for GitHub Sync!")
@@ -69,7 +67,6 @@ class GitHubConnector(BaseConnector):
             "events_processed": len(normalized_events) if normalized_events else 0
         }
 
-    # 🚨 FIX: Added the missing abstract method to prevent the 500 error
     def normalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Normalizes GitHub data to match the AgentOS internal schema."""
         return data

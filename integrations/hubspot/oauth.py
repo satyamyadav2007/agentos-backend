@@ -1,7 +1,7 @@
 import os
 import httpx
 
-class HubSpotOAuthManager:
+class HubSpotAuthManager:
     """Handles HubSpot OAuth 2.0 flow."""
     
     def __init__(self):

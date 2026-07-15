@@ -1,20 +1,20 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import ZoomOAuthManager
+from .oauth import ZoomAuthManager
 from .client import ZoomClient
 from .services.sync_service import ZoomSyncService
 
 class ZoomConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = ZoomOAuthManager()
+        self.auth_manager = ZoomAuthManager()
         self.zoom_client = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
         print("🔗 [Zoom Connector] Connecting Zoom Intelligence Engine...")
         try:
             # 1. Fetch S2S Token
-            token = await self.oauth_manager.get_access_token()
+            token = await self.auth_manager.get_access_token()
             self.zoom_client = ZoomClient(access_token=token)
             
             # 2. Trigger Initial Data Sync

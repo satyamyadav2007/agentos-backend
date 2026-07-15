@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import DiscordOAuthManager
+from .oauth import DiscordAuthManager
 from .client import DiscordClient
 from .services.sync_service import DiscordSyncService
 
 class DiscordConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = DiscordOAuthManager()
+        self.auth_manager = DiscordAuthManager()
         self.discord_client = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -17,7 +17,7 @@ class DiscordConnector(BaseConnector):
             
         try:
             # 1. Get Token
-            token = await self.oauth_manager.authenticate(auth_code)
+            token = await self.auth_manager.authenticate(auth_code)
             
             # Note: For reading all community messages, you typically use a Bot Token. 
             # We initialize client with the OAuth token for user-specific actions, 

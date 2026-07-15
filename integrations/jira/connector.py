@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import JiraOAuthManager
+from .oauth import JiraAuthManager
 from .client import JiraClient
 from .services.sync_service import JiraSyncService
 
 class JiraConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = JiraOAuthManager()
+        self.auth_manager = JiraAuthManager()
         self.jira_client = None
         self.site_url = None
 
@@ -17,7 +17,7 @@ class JiraConnector(BaseConnector):
             return {"status": "error", "message": "Missing auth_code"}
             
         try:
-            token, cloud_id, site_url = await self.oauth_manager.authenticate(auth_code)
+            token, cloud_id, site_url = await self.auth_manager.authenticate(auth_code)
             self.jira_client = JiraClient(access_token=token, cloud_id=cloud_id)
             self.site_url = site_url
             

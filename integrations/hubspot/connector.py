@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import HubSpotOAuthManager
+from .oauth import HubSpotAuthManager
 from .client import HubSpotClient
 from .services.sync_service import HubSpotSyncService
 
 class HubSpotConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = HubSpotOAuthManager()
+        self.auth_manager = HubSpotAuthManager()
         self.hubspot_client = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -16,7 +16,7 @@ class HubSpotConnector(BaseConnector):
             return {"status": "error", "message": "Missing auth_code"}
             
         try:
-            token = await self.oauth_manager.authenticate(auth_code)
+            token = await self.auth_manager.authenticate(auth_code)
             self.hubspot_client = HubSpotClient(access_token=token)
             
             # Initial Data Sync 

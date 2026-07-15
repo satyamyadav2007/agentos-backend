@@ -1,7 +1,7 @@
 import os
 import httpx
 
-class DiscordOAuthManager:
+class DiscordAuthManager:
     """Handles Discord OAuth 2.0 flow."""
     
     def __init__(self):

@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from integrations.base import BaseConnector
-from .oauth import SlackOAuthManager
+from .oauth import SlackAuthManager
 from .client import SlackClient
 from .services.sync_service import SlackSyncService
 
 class SlackConnector(BaseConnector):
     def __init__(self, workspace_id: str, org_id: str):
         super().__init__(workspace_id, org_id)
-        self.oauth_manager = SlackOAuthManager()
+        self.auth_manager = SlackAuthManager()
         self.slack_client = None
 
     async def connect(self, auth_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -16,7 +16,7 @@ class SlackConnector(BaseConnector):
             return {"status": "error", "message": "Missing auth_code"}
             
         try:
-            bot_token = await self.oauth_manager.authenticate(auth_code)
+            bot_token = await self.auth_manager.authenticate(auth_code)
             self.slack_client = SlackClient(access_token=bot_token)
             
             # Trigger initial sync immediately after connect
