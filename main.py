@@ -37,8 +37,8 @@ from adapters.crm_aggregator import crm_engine
 from adapters.apify_engine import apify_connector
 from adapters.log_engine import parse_engineering_logs
 from agents.agents_role import get_cpo_persona
-from agents.theme_agent import generate_themes
-from agents.revenue_agent import calculate_impact
+from agents.theme_agent import ThemeAgent
+from agents.revenue_agent import revenue_agent
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from core.event_bus import event_bus
