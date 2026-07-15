@@ -261,6 +261,7 @@ async def get_integration_status(workspace_id: str):
 async def get_active_agents(workspace_id: str):
     # Future me DB query aayegi
     return {"status": "success", "workspace_id": workspace_id, "active_agents": []}
+
 @app.get("/health")
 def system_health_check():
     return {
@@ -1813,13 +1814,14 @@ async def create_workspace(
 import uuid
 from fastapi import BackgroundTasks
 from pydantic import BaseModel
+from typing import Optional, List  # ⚡ Add List here
 
 # ⚡ In-Memory Job Store (MVP ke liye. Production me Redis use karna)
 sync_jobs = {}
 
 class SyncStartPayload(BaseModel):
     workspace_id: str
-    integrations: Optional[List[str]] = []
+    integrations: Optional[list[str]] = []
 
 async def execute_universal_sync(job_id: str, workspace_id: str, integrations: list[str]):
     try:
