@@ -12,6 +12,12 @@ class GitHubConnector(BaseConnector):
         self.access_token = None
         self.installation_id = None
 
+    # ⚡ ADD THESE 4 METHODS TO SATISFY BaseConnector ⚡
+    async def connect(self, *args, **kwargs): pass
+    async def disconnect(self, *args, **kwargs): pass
+    async def normalize(self, data, *args, **kwargs): return data
+    async def webhook(self, request, *args, **kwargs): pass
+
     async def sync(self, user_email: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetches real data from GitHub and returns it strictly matching the AgentOS Contract.

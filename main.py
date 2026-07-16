@@ -1970,27 +1970,44 @@ async def execute_mission_control_sync(workspace_id: str, user_email: str, reque
                 
                 if connector:
                     connector_instance = connector(workspace_id=workspace_id, org_id="default_org")
-                    sync_result = await connector_instance.sync(user_email=user_email)
+                    import inspect
+                    sync_method = getattr(connector_instance, "sync", None)
+                    if sync_method:
+                        sig = inspect.signature(sync_method)
+                        if "user_email" in sig.parameters:
+                            sync_result = await connector_instance.sync(user_email=user_email)
+                        else:
+                            sync_result = await connector_instance.sync()
                     
                     # ⚡ Data processing & saving to buffer
                     events_processed = sync_result.get("events_processed", 0) if isinstance(sync_result, dict) else 0
                     
-                    # Agar connector ne actual data return kiya hai (e.g., {"data": [...]}), toh usko buffer me daalo
-                    if isinstance(sync_result, dict) and "data" in sync_result:
-                        engine_state["raw_data_buffer"].extend(sync_result["data"])
-                    else:
-                        # Fallback mock data if connector doesn't return raw data yet
-                        for _ in range(events_processed):
-                            engine_state["raw_data_buffer"].append({"source": app_name.lower(), "data": "Mock raw data"})
                     
+                    
+                    if isinstance(sync_result, dict):
+                        # 1. Naya Strict Contract (GitHub ab "records" bhejta hai)
+                        if "records" in sync_result:
+                            engine_state["raw_data_buffer"].extend(sync_result["records"])
+                            events_processed = len(sync_result["records"])
+                        
+                        # 2. Purana Contract (Agar koi connector "data" bhejta hai)
+                        elif "data" in sync_result:
+                            engine_state["raw_data_buffer"].extend(sync_result["data"])
+                            events_processed = sync_result.get("events_processed", len(sync_result["data"]))
+                        
+                        # 3. Fallback (Agar sirf count aaya par data nahi)
+                        else:
+                            events_processed = sync_result.get("events_processed", 0)
+                            for _ in range(events_processed):
+                                engine_state["raw_data_buffer"].append({"source": app_name.lower(), "title": "Mock raw data"})
+
+                    # Update metrics dynamically
                     if app_name.lower() == "github":
                         engine_state["metrics"]["issues"] += events_processed
-                        engine_state["dataQuality"]["collected"] += events_processed
                     elif app_name.lower() == "jira":
                         engine_state["metrics"]["tickets"] += events_processed
-                        engine_state["dataQuality"]["collected"] += events_processed
-                    else:
-                        engine_state["dataQuality"]["collected"] += events_processed
+                    
+                    engine_state["dataQuality"]["collected"] += events_processed
 
                     app_state["status"] = "done"
                     app_state["items"] = f"{events_processed} Records"
