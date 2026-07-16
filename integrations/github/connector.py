@@ -6,7 +6,7 @@ from database.models import WorkspaceIntegration
 import traceback
 
 from .services.sync_service import GitHubSyncService
-from .utils.client import GitHubClient
+from .client import GitHubClient
 
 class GitHubConnector(BaseConnector):
     """Orchestrates the GitHub integration with a strict Universal Return Contract."""
