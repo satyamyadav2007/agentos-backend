@@ -1,7 +1,12 @@
 from typing import Dict, Any, Optional
 from integrations.base import BaseConnector
 from .oauth import GitHubAuthManager
-from github import Github # Make sure PyGithub is installed (pip install PyGithub)
+from database.postgres_setup import SessionLocal
+from database.models import WorkspaceIntegration
+import traceback
+
+from .services.sync_service import GitHubSyncService
+from .utils.client import GitHubClient
 
 class GitHubConnector(BaseConnector):
     """Orchestrates the GitHub integration with a strict Universal Return Contract."""
@@ -12,93 +17,91 @@ class GitHubConnector(BaseConnector):
         self.access_token = None
         self.installation_id = None
 
-    # ⚡ ADD THESE 4 METHODS TO SATISFY BaseConnector ⚡
+    # ⚡ PURANA LOGIC: Satisfy BaseConnector strict requirements
     async def connect(self, *args, **kwargs): pass
     async def disconnect(self, *args, **kwargs): pass
     async def normalize(self, data, *args, **kwargs): return data
     async def webhook(self, request, *args, **kwargs): pass
 
+    def _get_error_contract(self, message: str) -> Dict[str, Any]:
+        """Strict failure contract ensuring the UI doesn't crash."""
+        return {
+            "provider": "github",
+            "metrics": {"repositories": 0, "issues": 0, "pull_requests": 0, "commits": 0},
+            "records": [],
+            "cursor": None,
+            "sync_status": "error",
+            "message": message
+        }
+
     async def sync(self, user_email: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetches real data from GitHub and returns it strictly matching the AgentOS Contract.
         """
-        if not self.access_token:
-            return {
-                "provider": "github",
-                "metrics": {"repositories": 0, "issues": 0, "pull_requests": 0, "commits": 0},
-                "records": [],
-                "cursor": None,
-                "sync_status": "failed",
-                "message": "Access token is missing. Please authenticate."
-            }
-
+        db = SessionLocal()
         try:
-            print("🐙 [GitHub Connector] Initializing real API extraction...")
-            gh = Github(self.access_token)
-            user = gh.get_user()
+            print(f"🔍 [Connector] Looking up DB for Workspace: {self.workspace_id}")
             
-            records = []
-            repo_count = 0
+            # ⚡ NAYA LOGIC: Fetch dynamically from Webhook-saved Postgres DB
+            integration = db.query(WorkspaceIntegration).filter(
+                WorkspaceIntegration.workspace_id == self.workspace_id,
+                WorkspaceIntegration.provider == "github"
+            ).first()
+
+            if not integration or not integration.installation_id:
+                return self._get_error_contract("No GitHub App installation found in Postgres DB.")
+
+            self.installation_id = integration.installation_id
+            print(f"🔑 [Connector] Database match found! Installation ID: {self.installation_id}")
+
+            # Generate Fresh Token
+            token_data = self.auth_manager.get_installation_token(self.installation_id)
+            self.access_token = token_data.get("token") if isinstance(token_data, dict) else token_data
+
+            if not self.access_token:
+                return self._get_error_contract("Failed to generate secure GitHub Token.")
+
+            # ⚡ NAYA LOGIC: Fire the massive async Sync Service
+            client = GitHubClient(self.access_token)
+            sync_service = GitHubSyncService(client)
+            
+            print("🚀 [Connector] Token verified. Executing modular extraction pipeline...")
+            records = await sync_service.run_full_sync(
+                installation_id=self.installation_id,
+                workspace_id=self.workspace_id,
+                db=db
+            )
+
+            # ⚡ PURANA LOGIC: Meticulous Metrics Calculation for the Dashboard
+            unique_repos = set()
             issue_count = 0
             pr_count = 0
-            
-            # ⚡ SMART REPO FETCHING (Handles both OAuth Users & GitHub App Integrations)
-            repos_to_sync = []
-            try:
-                # Pehle normal tareeqa try karega
-                repos_to_sync = list(user.get_repos(sort="updated", direction="desc")[:5])
-            except Exception as e:
-                if "403" in str(e) or "integration" in str(e).lower():
-                    print("🔄 [GitHub Connector] Switched to GitHub App Installation mode...")
-                    # Agar 403 aaya (Resource not accessible by integration), toh App Installations ke through repos nikalega
-                    installations = user.get_installations()
-                    if installations.totalCount > 0:
-                        repos_to_sync = list(installations[0].get_repos()[:5])
-                    else:
-                        raise Exception("No GitHub App installations found for this user.")
-                else:
-                    raise e
-            
-            # Ab repos mil gaye hain, toh issues aur PRs nikalte hain
-            for repo in repos_to_sync:
-                repo_count += 1
-                
-                # Fetching recent open issues (GitHub API treats PRs as issues too)
-                open_items = repo.get_issues(state='open', sort='updated')[:15]
-                
-                for item in open_items:
-                    is_pr = item.pull_request is not None
-                    if is_pr:
-                        pr_count += 1
-                        record_type = "pull_request"
-                    else:
-                        issue_count += 1
-                        record_type = "issue"
-                        
-                    records.append({
-                        "id": f"gh-{item.id}",
-                        "type": record_type,
-                        "source": "github",
-                        "title": item.title,
-                        "description": item.body[:1000] if item.body else "No description provided.",
-                        "url": item.html_url,
-                        "state": item.state,
-                        "created_at": item.created_at.isoformat() if item.created_at else None,
-                        "metadata": {
-                            "repository": repo.name,
-                            "author": item.user.login if item.user else "Unknown"
-                        }
-                    })
+            commit_count = 0
 
-            print(f"✅ [GitHub Connector] Extracted {issue_count} issues & {pr_count} PRs from {repo_count} repos.")
+            for record in records:
+                repo_name = record.get("repository")
+                if repo_name:
+                    unique_repos.add(repo_name)
+                    
+                entity_type = record.get("entity_type")
+                if entity_type == "issue":
+                    issue_count += 1
+                elif entity_type == "pull_request":
+                    pr_count += 1
+                elif entity_type == "commit":
+                    commit_count += 1
 
+            repo_count = len(unique_repos)
+            print(f"✅ [GitHub Connector] Extracted {issue_count} issues, {pr_count} PRs, {commit_count} commits from {repo_count} repos.")
+
+            # ⚡ PURANA LOGIC: The exact Universal AgentOS Contract 
             return {
                 "provider": "github",
                 "metrics": {
                     "repositories": repo_count,
                     "issues": issue_count,
                     "pull_requests": pr_count,
-                    "commits": 0 
+                    "commits": commit_count
                 },
                 "records": records,
                 "cursor": "initial_sync_complete",
@@ -109,12 +112,6 @@ class GitHubConnector(BaseConnector):
             print(f"🚨 [GitHub Extractor Error]: {e}")
             import traceback
             traceback.print_exc()
-            
-            return {
-                "provider": "github",
-                "metrics": {"repositories": 0, "issues": 0, "pull_requests": 0, "commits": 0},
-                "records": [],
-                "cursor": None,
-                "sync_status": "error",
-                "message": str(e)
-            }
+            return self._get_error_contract(str(e))
+        finally:
+            db.close()

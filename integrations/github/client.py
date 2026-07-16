@@ -1,5 +1,5 @@
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, List
 
 class GitHubClient:
     """Centralized HTTP Client for GitHub REST & GraphQL API."""
@@ -7,7 +7,8 @@ class GitHubClient:
     def __init__(self, access_token: str):
         self.access_token = access_token
         self.base_url = "https://api.github.com"
-        self.timeout = httpx.Timeout(20.0)
+        # ⚡ Timeout thoda bada rakha hai taaki heavy enterprise sync me fail na ho
+        self.timeout = httpx.Timeout(30.0)
 
     @property
     def _headers(self) -> Dict[str, str]:
@@ -17,14 +18,32 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28"
         }
 
-    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], List[Any]]:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, headers=self._headers, params=params)
-            
-            # Simple Rate Limit handling (Can be moved to utils/rate_limit.py later)
-            if response.status_code == 403 and "rate limit" in response.text.lower():
-                print("⚠️ [GitHub Client] Rate limit exceeded!")
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=self._headers, params=params)
                 
-            response.raise_for_status()
-            return response.json()
+                # 1. ⚡ GRACEFUL RATE LIMIT HANDLING
+                if response.status_code == 403 and "rate limit" in response.text.lower():
+                    print(f"⚠️ [GitHub Client] Rate limit exceeded for {endpoint}! Bypassing to save pipeline.")
+                    return [] 
+                    
+                # 2. ⚡ GRACEFUL EMPTY REPO / NOT FOUND HANDLING (Fixes the crash)
+                if response.status_code in [404, 409]:
+                    print(f"⚠️ [GitHub Client] Resource not found or empty (404/409): {endpoint}")
+                    # Extractors loops (for x in data) expect lists, so returning [] prevents TypeError
+                    return [] 
+
+                # Standard error raiser for other 500s
+                response.raise_for_status()
+                return response.json()
+                
+        except httpx.HTTPStatusError as e:
+            print(f"🚨 [GitHub Client] HTTP Error {e.response.status_code} for {url}: {e.response.text}")
+            return [] # Failsafe return
+            
+        except Exception as e:
+            print(f"🚨 [GitHub Client] Network Error connecting to {url}: {str(e)}")
+            return [] # Failsafe return

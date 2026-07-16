@@ -454,18 +454,21 @@ from integrations.github.webhook import github_webhook_handler
 # 🕸️ GITHUB LIVE WEBHOOK ROUTE
 # ==========================================
 @app.post("/api/integrations/github/webhook")
-async def github_live_webhook(request: Request):
+async def github_live_webhook(
+    request: Request,
+    db: Session = Depends(get_db)  # ⚡ FIX 1: Database session inject kiya
+):
     # GitHub hamesha event ka type is header mein bhejta hai
     event_name = request.headers.get("X-GitHub-Event", "unknown")
     
     try:
         payload = await request.json()
-        # Webhook handler ko data pass karo
-        result = await github_webhook_handler.handle_event(event_name, payload)
+        # Webhook handler ko data ke sath db bhi pass karo
+        result = await github_webhook_handler.handle_event(event_name, payload, db) # ⚡ FIX 2: 'db' pass kiya
         return result
     except Exception as e:
         print(f"🚨 [Webhook Error]: {e}")
-        return {"status": "error", "message": str(e)}  
+        return {"status": "error", "message": str(e)}
 
 # main.py ke andar
 

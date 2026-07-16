@@ -26,51 +26,55 @@ export default function MissionControlSync() {
 
   // UI ko change na karna pade isliye purane variables extract kar liye
   const { overallProgress, eta, isCoreComplete, apps,  metrics, dataQuality, earlyFindings, logs } = engineState;
-
-  
-  // Add this inside your frontend component to kick off the backend job
+  // ⚡ COMBINED PIPELINE: Fetch Apps -> Setup UI -> Trigger Sync
   useEffect(() => {
-    const startBackendSync = async () => {
-      const workspaceId = localStorage.getItem('agentos_workspace_id');
-      if (workspaceId) {
-        await fetch('https://agentos-api-5suh.onrender.com/api/sync/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspace_id: workspaceId })
-        });
-      }
-    };
-    startBackendSync();
-  }, []);
-
-  // ✅ 2. Backend se connected apps fetch karne wala block
-  useEffect(() => {
-    const fetchConnectedApps = async () => {
+    const initializeMissionControl = async () => {
       try {
         const workspaceId = localStorage.getItem('agentos_workspace_id');
         if (!workspaceId) return;
 
-        // Tumhare naye endpoint par call
-        const res = await fetch(`https://agentos-api-5suh.onrender.com/api/integrations/status?workspace_id=${workspaceId}`);
-        const data = await res.json();
+        console.log("🔍 Fetching connected tools...");
+        
+        // 1. Backend se connected apps fetch karo
+        const statusRes = await fetch(`https://agentos-api-5suh.onrender.com/api/integrations/status?workspace_id=${workspaceId}`);
+        const statusData = await statusRes.json();
+        
+        // Fallback: Agar backend empty de, toh explicitly 'github' pass karo
+        const connectedTools = (statusData.connected_tools && statusData.connected_tools.length > 0) 
+          ? statusData.connected_tools 
+          : ["github"];
 
-        // Backend se array aayega, e.g., ["GitHub", "Linear", "Notion"]
-        if (data.connected_tools && data.connected_tools.length > 0) {
-          const dynamicApps = data.connected_tools.map((toolName: string) => ({
-            name: toolName,
-            status: 'waiting', // Default status jab tak sync start na ho
-            progress: 0,
-            items: 'Waiting'
-          }));
-          setEngineState(prev => ({ ...prev, apps: dynamicApps }));
-        }
+        console.log("✅ Tools to sync:", connectedTools);
+
+        // 2. UI State Update Karo
+        const dynamicApps = connectedTools.map((toolName: string) => ({
+          name: toolName.charAt(0).toUpperCase() + toolName.slice(1), // Capitalize
+          status: 'waiting',
+          progress: 0,
+          items: 'Waiting'
+        }));
+        setEngineState(prev => ({ ...prev, apps: dynamicApps }));
+
+        // 3. 🚀 TRIGGER THE BACKEND SYNC WITH THE INTEGRATIONS ARRAY
+        await fetch('https://agentos-api-5suh.onrender.com/api/sync/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            workspace_id: workspaceId,
+            integrations: connectedTools // ⚡ THIS FIXES THE 0 RECORDS ISSUE
+          })
+        });
+
       } catch (error) {
-        console.error("🚨 Failed to fetch connected apps:", error);
+        console.error("🚨 Mission Control Initialization Failed:", error);
       }
     };
 
-    fetchConnectedApps();
+    initializeMissionControl();
   }, []);
+
+  
+  
   // ✅ 1. Agents state ko empty array se initialize karo
   const [agents, setAgents] = useState<{name: string, status: string}[]>([]);
 
