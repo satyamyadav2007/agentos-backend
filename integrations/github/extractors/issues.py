@@ -1,7 +1,7 @@
 # File: integrations/github/extractors/issues.py
 
 from typing import List
-from integrations.github.models.issues import GitHubIssueModel
+from integrations.github.models.issue import GitHubIssueModel
 
 class GitHubIssuesExtractor:
     """Handles data collection for GitHub Issues (Async)."""
