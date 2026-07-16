@@ -6,6 +6,7 @@ from database.postgres_setup import Base
 class WorkspaceIntegration(Base):
     """Stores GitHub App installations and tokens for workspaces."""
     __tablename__ = "workspace_integrations"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(String, index=True, nullable=False)
@@ -19,6 +20,7 @@ class WorkspaceIntegration(Base):
 class UniversalEventRecord(Base):
     """Stores the normalized data (Sprint 1 - Module 20)"""
     __tablename__ = "universal_events"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(String, index=True, nullable=False)
