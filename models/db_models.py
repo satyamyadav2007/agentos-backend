@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean
 from sqlalchemy.sql import func
 # Ye import wahi se hoga jahan tumne Source 7 wala code rakha hai (e.g., database.py)
-from database import Base 
+from database.postgres_setup import Base 
 
 class WorkspaceIntegration(Base):
     """Stores GitHub App installations and tokens for workspaces."""
