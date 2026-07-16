@@ -73,3 +73,7 @@ The solution MUST follow the internal company documentation above.
         except Exception as e:
             print(f"[Error] PRD Agent failed: {e}")
             return "PRD generation failed due to model error."
+
+
+# Global Instance
+prd_engine = PRDAgent()            
