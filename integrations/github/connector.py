@@ -22,7 +22,6 @@ class GitHubConnector(BaseConnector):
         """
         Fetches real data from GitHub and returns it strictly matching the AgentOS Contract.
         """
-        # Baseline Failure Contract
         if not self.access_token:
             return {
                 "provider": "github",
@@ -35,10 +34,7 @@ class GitHubConnector(BaseConnector):
 
         try:
             print("🐙 [GitHub Connector] Initializing real API extraction...")
-            # Initialize PyGithub client
             gh = Github(self.access_token)
-            
-            # Fetch the authenticated user/installation context
             user = gh.get_user()
             
             records = []
@@ -46,11 +42,28 @@ class GitHubConnector(BaseConnector):
             issue_count = 0
             pr_count = 0
             
-            # Fetching top 5 active repos for the initial fast sync
-            for repo in user.get_repos(sort="updated", direction="desc")[:5]:
+            # ⚡ SMART REPO FETCHING (Handles both OAuth Users & GitHub App Integrations)
+            repos_to_sync = []
+            try:
+                # Pehle normal tareeqa try karega
+                repos_to_sync = list(user.get_repos(sort="updated", direction="desc")[:5])
+            except Exception as e:
+                if "403" in str(e) or "integration" in str(e).lower():
+                    print("🔄 [GitHub Connector] Switched to GitHub App Installation mode...")
+                    # Agar 403 aaya (Resource not accessible by integration), toh App Installations ke through repos nikalega
+                    installations = user.get_installations()
+                    if installations.totalCount > 0:
+                        repos_to_sync = list(installations[0].get_repos()[:5])
+                    else:
+                        raise Exception("No GitHub App installations found for this user.")
+                else:
+                    raise e
+            
+            # Ab repos mil gaye hain, toh issues aur PRs nikalte hain
+            for repo in repos_to_sync:
                 repo_count += 1
                 
-                # Fetching recent open issues (GitHub API treats PRs as issues too, so we filter)
+                # Fetching recent open issues (GitHub API treats PRs as issues too)
                 open_items = repo.get_issues(state='open', sort='updated')[:15]
                 
                 for item in open_items:
@@ -62,7 +75,6 @@ class GitHubConnector(BaseConnector):
                         issue_count += 1
                         record_type = "issue"
                         
-                    # Standardizing the raw data into AgentOS Record Object
                     records.append({
                         "id": f"gh-{item.id}",
                         "type": record_type,
@@ -80,14 +92,13 @@ class GitHubConnector(BaseConnector):
 
             print(f"✅ [GitHub Connector] Extracted {issue_count} issues & {pr_count} PRs from {repo_count} repos.")
 
-            # ⚡ THE STRICT UNIVERSAL CONTRACT RETURN
             return {
                 "provider": "github",
                 "metrics": {
                     "repositories": repo_count,
                     "issues": issue_count,
                     "pull_requests": pr_count,
-                    "commits": 0 # Can be paginated in a deeper background sync later
+                    "commits": 0 
                 },
                 "records": records,
                 "cursor": "initial_sync_complete",
@@ -99,7 +110,6 @@ class GitHubConnector(BaseConnector):
             import traceback
             traceback.print_exc()
             
-            # Strict Contract even on Failure
             return {
                 "provider": "github",
                 "metrics": {"repositories": 0, "issues": 0, "pull_requests": 0, "commits": 0},

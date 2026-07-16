@@ -42,6 +42,7 @@ from agents.revenue_agent import revenue_agent
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from core.event_bus import event_bus
+from agents.recommendation_agent import recommendation_engine
 load_dotenv() # ⚡ Yeh line tumhari .env file ke saare variables ko system mein load kar degi
 
 # ==========================================
@@ -1053,6 +1054,14 @@ async def connect_knowledge(payload: KnowledgeConnectPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))                                            
 
+# main.py ke andar SIRF yeh ek Chat Route hona chahiye:
+from pydantic import BaseModel
+from agents.chat_agent import ask_executive_cpo
+
+class ChatPayload(BaseModel):
+    message: str
+    context_data: list = []
+
 @app.post("/api/chat")
 async def executive_chat(payload: ChatPayload):
     try:
@@ -1062,8 +1071,122 @@ async def executive_chat(payload: ChatPayload):
         )
         return result
     except Exception as e:
+        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+# main.py ke imports section mein:
+from agents.root_cause_agent import root_cause_engine
+
+class RootCauseRequest(BaseModel):
+    issue_keyword: str
+
+# ==========================================
+# 🔍 SPRINT 4: AI ROOT CAUSE ENDPOINT (Module 10)
+# ==========================================
+@app.post("/api/root-cause")
+async def get_root_cause(
+    payload: RootCauseRequest, 
+    auth_payload: dict = Depends(verify_clerk_user)
+):
+    """
+    Frontend triggers this when a user clicks 'Analyze Root Cause' on a specific bug.
+    """
+    real_email = auth_payload.get("email", "unknown_user")
+    print(f"\n⚙️ [API] Root Cause Analysis requested by {real_email} for '{payload.issue_keyword}'")
+    
+    result = await root_cause_engine.analyze_issue(payload.issue_keyword)
+    
+    return result  
+from pydantic import BaseModel
+from agents.prd_agent import prd_engine
+
+class PRDRequest(BaseModel):
+    title: str
+    description: str
+    revenue_risk: str
+
+# ==========================================
+# 📝 SPRINT 5: AUTOMATIC PRD ENGINE (Module 14)
+# ==========================================
+@app.post("/api/generate-prd")
+async def generate_prd_endpoint(
+    req: PRDRequest,
+    auth_payload: dict = Depends(verify_clerk_user)
+):
+    real_email = auth_payload.get("email", "unknown_user")
+    print(f"\n⚙️ [API] PRD Generation requested by {real_email} for '{req.title}'")
+    
+    try:
+        # Convert revenue string (e.g., "$1.2M" or "$380k") to a numeric approximation if needed, 
+        # or pass directly. Tumhara agent integer revenue risk expect karta hai, 
+        # but string pass karne ke liye hum use thoda clean kar dete hain.
+        clean_revenue = req.revenue_risk.replace('$', '').replace('M', '000000').replace('k', '000')
+        revenue_val = int(float(clean_revenue)) if clean_revenue.replace('.','',1).isdigit() else 0
+
+        # Constructing theme data from title and description
+        theme_data = {
+            "summary": req.title,
+            "category": req.description
+        }
+
+        # Triggering the Agent (Source 24)
+        prd_text = await prd_engine.generate_prd(
+            text=req.description,
+            theme_data=theme_data,
+            revenue_risk=revenue_val
+        )
+        
+        return {
+            "status": "success",
+            "feature": req.title,
+            "prd_content": prd_text
+        }
+        
+    except Exception as e:
+        print(f"🚨 [PRD API Error]: {e}")
+        return {"status": "error", "message": str(e)}  
+from services.velocity_engine import velocity_analytics
+
+# ==========================================
+# 📊 SPRINT 6: VELOCITY ANALYTICS (Module 11)
+# ==========================================
+@app.get("/api/velocity-metrics")
+async def get_velocity_metrics(
+    workspace_id: str = "default_workspace", # In production, derive from token
+    db: Session = Depends(get_db),
+    auth_payload: dict = Depends(verify_clerk_user)
+):
+    print(f"\n⚙️ [API] Velocity Metrics requested for Workspace: {workspace_id}")
+    
+    try:
+        # Calculate real DORA metrics from the Postgres Database
+        metrics = velocity_analytics.calculate_metrics(workspace_id=workspace_id, db=db)
+        return metrics
+        
+    except Exception as e:
+        print(f"🚨 [Velocity Analytics Error]: {e}")
+        return {"status": "error", "message": str(e)} 
+from services.tech_debt_engine import tech_debt_engine
+
+# ==========================================
+# 🧹 SPRINT 7: TECHNICAL DEBT ENGINE (Module 12)
+# ==========================================
+@app.get("/api/tech-debt")
+async def get_technical_debt(
+    workspace_id: str = "default_workspace", # In production, derive from token
+    db: Session = Depends(get_db),
+    auth_payload: dict = Depends(verify_clerk_user)
+):
+    real_email = auth_payload.get("email", "unknown_user")
+    print(f"\n⚙️ [API] Tech Debt Scan requested by {real_email} for Workspace: {workspace_id}")
+    
+    try:
+        metrics = tech_debt_engine.analyze_debt(workspace_id=workspace_id, db=db)
+        return metrics
+        
+    except Exception as e:
+        print(f"🚨 [Tech Debt Engine Error]: {e}")
+        return {"status": "error", "message": str(e)}                       
 
 @app.post("/webhook/zendesk")
 async def process_webhook(request: Request):
@@ -1130,40 +1253,7 @@ async def upload_manual_data(
     background_tasks.add_task(run_ai_pipeline_in_background, "zendesk_ticket", payload, real_email)
     
     return {"status": "success", "message": "File uploaded securely. AgentOS is processing it."}
-from agents.agents_role import get_cpo_persona
-from groq import AsyncGroq
-import os
-
-# Ensure GROQ_API_KEY is in your environment variables
-groq_client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", "your_fallback_api_key_here"))
-
-class ChatRequest(BaseModel):
-    message: str
-    context_data: list = [] # Dashboard ka current state yahan aayega
-
-@app.post("/api/chat")
-async def ai_cpo_chat(req: ChatRequest):
-    print(f"💬 [AI CPO] Received question: {req.message}")
-    
-    # Dashboard ke active issues ko string me convert kar rahe hain as context
-    context_str = json.dumps(req.context_data)[:2000] if req.context_data else "No current active issues."
-    
-    try:
-        completion = await groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": f"{get_cpo_persona()} Current Dashboard Context: {context_str}"},
-                {"role": "user", "content": req.message}
-            ],
-            model="llama-3.1-8b-instant",
-            temperature=0.3, # Low temp for factual, executive answers
-        )
-        
-        reply_text = completion.choices[0].message.content
-        return {"status": "success", "reply": reply_text}
-        
-    except Exception as e:
-        print(f"🚨 [Chat Engine Error]: {str(e)}")
-        return {"status": "error", "reply": "I am currently analyzing the graph database. Please try again in a moment."} 
+ 
 # ⚡ THE UNIVERSAL SIGNAL GATEWAY (Accepts EVERYTHING)
 @app.post("/api/universal-webhook")
 async def universal_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -1238,28 +1328,52 @@ async def sync_social_signals(background_tasks: BackgroundTasks):
         "message": f"AgentOS is processing {len(raw_signals)} social signals in the background."
     }   
 from pydantic import BaseModel
+from adapters.action_engine import action_arm
 
 class ActionRequest(BaseModel):
-    action_type: str # e.g., "create_jira", "reply_customer"
+    action_type: str # e.g., "create_ticket", "reply_customer"
     title: str = "Untitled Issue"
     description: str = "No description provided."
     severity: str = "Medium"
+    ticket_id: str = None # Required for Zendesk
 
-# ⚡ CATEGORY 3: The Outbound Execution Route
+# ==========================================
+# ⚡ SPRINT 4: OUTBOUND ACTION ENGINE ROUTE
+# ==========================================
 @app.post("/api/execute-action")
-async def execute_outbound_action(req: ActionRequest):
-    print(f"\n⚙️ [AgentOS] Outbound Action Triggered: {req.action_type}")
+async def execute_outbound_action(
+    req: ActionRequest,
+    auth_payload: dict = Depends(verify_clerk_user)
+):
+    real_email = auth_payload.get("email", "unknown_user")
+    print(f"\n⚙️ [API] Outbound Action '{req.action_type}' triggered by {real_email}")
     
-    if req.action_type == "create_jira":
-        result = await action_arm.create_jira_ticket(req.title, req.description, req.severity)
-        return result
+    try:
+        if req.action_type == "create_ticket":
+            # Automatically routes to Jira or Linear based on OS setup
+            result = await action_arm.execute_ticket_creation(
+                issue_title=req.title, 
+                description=req.description, 
+                severity=req.severity
+            )
+            return result
+            
+        elif req.action_type == "reply_customer":
+            if not req.ticket_id:
+                return {"status": "error", "message": "ticket_id is required for customer replies."}
+                
+            result = await action_arm.auto_reply_zendesk(
+                ticket_id=req.ticket_id, 
+                reply_text=req.description
+            )
+            return result
+            
+        return {"status": "error", "message": f"Unknown action type: {req.action_type}"}
         
-    elif req.action_type == "reply_customer":
-        # Placeholder for auto-reply logic
-        result = await action_arm.auto_reply_zendesk("ZD-992", req.description)
-        return result
-        
-    return {"status": "error", "message": "Unknown action type."}    
+    except Exception as e:
+        print(f"🚨 [Action Engine Error]: {e}")
+        return {"status": "error", "message": str(e)}
+          
 async def process_universal_signal_bg(source: str, raw_data_str: str):
     try:
         # 1. Direct parsing via fast, memory-safe Groq LLM (Bouncer Agent)
@@ -1632,6 +1746,20 @@ async def get_dashboard_stats(
             dynamic_eng_bugs = [{ "id": 0, "title": "No active bugs detected in Neo4j", "errorCode": "ALL_CLEAR", "affected": 0, "revImpact": "$0", "rootCause": "None", "assigneeInitials": "OK", "assigneeName": "System", "eta": "N/A", "color": "green" }]
             dynamic_clusters = [{ "id": 1, "name": "System Healthy", "users": 0, "severity": "low" }]
 
+        # ---------------------------------------------------------
+        # ⚡ 4. MODULE 18: GENERATE DYNAMIC AI RECOMMENDATIONS
+        # ---------------------------------------------------------
+        try:
+            ai_recs = await recommendation_engine.generate_recommendations(real_email)
+        except Exception as e:
+            print(f"🚨 [Dashboard Engine] AI Recommendation generation failed: {e}")
+            # Safe Fallback to maintain UI stability if Groq API fails
+            ai_recs = {
+                "revenue": { "title": "Analyze Revenue Model", "subtitle": "System scanning...", "value": "TBD" },
+                "engineering": { "title": "Review Recent Commits", "subtitle": "System scanning...", "value": "TBD" },
+                "churn": { "title": "Monitor Active Users", "subtitle": "System scanning...", "value": "TBD" }
+            }
+
         # 🚀 MASTER JSON FOR FRONTEND (Zero UI Logic - Nothing is missed)
         return {
             "status": "success",
@@ -1645,11 +1773,7 @@ async def get_dashboard_stats(
                     "productOpps": 8, 
                     "aiConfidence": "96%" 
                 },
-                "aiRecommendations": {
-                    "revenue": { "title": "Fix Login API", "subtitle": "Save", "value": formatted_revenue },
-                    "engineering": { "title": "Rollback Release 4.8", "subtitle": "Reduce crashes", "value": "42%" },
-                    "churn": { "title": "Reach out to ACME", "subtitle": "Likely to churn", "value": "Within 5 days" }
-                },
+                "aiRecommendations": ai_recs, # ⚡ Yahan Hardcoded data ko Live AI Recommendations se replace kiya hai!
                 "customerPainData": {
                     "keywords": ["Login Timeout", "Payment Gateway", "PDF Export"],
                     "clusters": dynamic_clusters # Real Neo4j Clusters
@@ -1770,7 +1894,7 @@ async def get_dashboard_stats(
     except Exception as e:
         print(f"🚨 Error generating dashboard stats: {e}")
         return {"status": "error", "message": str(e)}
-
+        
 class WorkspaceCreate(BaseModel):
     companyName: str
     industry: str

@@ -52,7 +52,87 @@ class GitHubNormalizer:
                 "number": pr_data.get("number"),
                 "state": pr_data.get("state"),
                 "merged": pr_data.get("merged", False),
-                "branch": pr_data.get("head", {}).get("ref", "unknown")
+                "branch": pr_data.get("head", {}).get("ref", "unknown"),
+                "created_at": pr_data.get("created_at"), # ⚡ Zaroori
+                "merged_at": pr_data.get("merged_at")
             },
             "linked_entities": []
         }
+    @staticmethod
+    def normalize_commit(commit_model_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
+        """Normalizes a GitHub Commit into a Universal Event."""
+        commit_info = commit_model_dict.get("commit", {})
+        message = commit_info.get("message", "No message")
+        author_name = commit_info.get("author", {}).get("name", "Unknown")
+        
+        # Simple AI heuristic for commit severity
+        severity = "Medium"
+        if any(keyword in message.lower() for keyword in ["fix", "hotfix", "critical", "revert"]):
+            severity = "High"
+
+        return {
+            "source": "github",
+            "entity_type": "commit",
+            "repository": repo_name,
+            "title": message.split("\n")[0][:100], # First line as title
+            "description": message,
+            "severity": severity,
+            "author": author_name,
+            "metadata_json": {
+                "sha": commit_model_dict.get("sha"),
+                "url": commit_model_dict.get("html_url")
+            }
+        }
+
+    @staticmethod
+    def normalize_action(action_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
+        """Normalizes a GitHub Action Workflow Run."""
+        conclusion = action_dict.get("conclusion")
+        
+        severity = "Low"
+        if conclusion in ["failure", "timed_out", "cancelled"]:
+            severity = "High" # Failed builds are critical blockers
+            
+        return {
+            "source": "github",
+            "entity_type": "ci_cd_run",
+            "repository": repo_name,
+            "title": f"Workflow: {action_dict.get('name')} ({conclusion})",
+            "description": f"Triggered by {action_dict.get('event')} on branch {action_dict.get('head_branch')}",
+            "severity": severity,
+            "author": action_dict.get("actor", {}).get("login", "System"),
+            "metadata_json": {
+                "run_id": action_dict.get("id"),
+                "html_url": action_dict.get("html_url"),
+                "status": action_dict.get("status")
+            }
+        } 
+    @staticmethod
+    def normalize_release(release_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
+        """Normalizes a GitHub Release into a Universal Event."""
+        is_draft = release_dict.get("draft", False)
+        is_prerelease = release_dict.get("prerelease", False)
+        
+        # Production releases are inherently 'Medium' risk events because they change the live environment
+        severity = "Low"
+        if not is_draft and not is_prerelease:
+            severity = "Medium" 
+
+        title_name = release_dict.get('name')
+        if not title_name:
+            title_name = release_dict.get('tag_name', 'Unknown Version')
+
+        return {
+            "source": "github",
+            "entity_type": "release",
+            "repository": repo_name,
+            "title": f"Release: {title_name}",
+            "description": release_dict.get("body", "No release notes provided.")[:1000],
+            "severity": severity,
+            "author": release_dict.get("author", {}).get("login", "System"),
+            "metadata_json": {
+                "tag_name": release_dict.get("tag_name"),
+                "is_production": not is_draft and not is_prerelease,
+                "url": release_dict.get("html_url")
+            }
+        }       

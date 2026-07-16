@@ -7,11 +7,12 @@ class GitHubRepositoryExtractor:
     def __init__(self, client):
         self.client = client
 
-    async def fetch_authorized_repos(self, installation_id: str) -> List[GitHubRepositoryModel]:
-        print(f"📦 [GitHub Extractor] Fetching repositories for installation {installation_id}...")
+    async def fetch_authorized_repos(self) -> List[GitHubRepositoryModel]:
+        # Ab installation_id pass karne ki zaroorat nahi, token khud batayega wo kiska hai
+        print(f"📦 [GitHub Extractor] Fetching repositories for active installation...")
         try:
-            # GitHub endpoint for app installation repos
-            raw_data = await self.client.get(f"user/installations/{installation_id}/repositories")
+            # ⚡ CORRECT ENDPOINT FOR INSTALLATION TOKENS
+            raw_data = await self.client.get("installation/repositories")
             repos_data = raw_data.get("repositories", [])
             
             repos = []

@@ -2,6 +2,7 @@ import os
 import certifi
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
+from typing import List, Dict, Any
 
 # Neo4j connection se pehle env variables load karna zaroori hai
 load_dotenv() 
@@ -29,51 +30,86 @@ class Neo4jConnection:
     def close(self):
         self.driver.close()
 
-    async def ingest_event(self, event):
+    async def build_knowledge_graph(self, workspace_id: str, records: List[Dict[str, Any]]):
         """
-        [THE REAL ENGINE]
-        Takes a UniversalEvent from EventBus and maps it dynamically into Neo4j.
-        No hardcoded names, no simulations. 100% Real Data.
+        [SPRINT 3 ENGINE]
+        Takes normalized Universal Events and builds a connected Knowledge Graph.
+        Maps: Engineer -> PR -> Commit -> Issue -> Repository
         """
-        # Graph query: Create an Event node and link it to its Source
-        query = """
-        MERGE (s:Source {name: $source})
-        MERGE (e:Event {title: $title})
-        SET e.text = $text,
-            e.severity = $severity,
-            e.sentiment = $sentiment,
-            e.url = $url,
-            e.ingested_at = timestamp()
-            
-        MERGE (s)-[:GENERATED]->(e)
-        """
+        print(f"🕸️ [GraphDB] Building Knowledge Graph for {len(records)} records...")
         
-        # event object directly use hoga
+        # Categorize records
+        issues = [r for r in records if r.get("entity_type") == "issue"]
+        prs = [r for r in records if r.get("entity_type") == "pull_request"]
+        commits = [r for r in records if r.get("entity_type") == "commit"]
+
         with self.driver.session() as session:
             try:
-                session.run(
-                    query, 
-                    source=event.source.lower(),
-                    title=event.title,
-                    text=event.text,
-                    severity=event.severity,
-                    sentiment=event.sentiment,
-                    url=event.url
-                )
-                print(f"🕸️ [GraphDB] Real Event Mapped: {event.source} -> {event.title[:30]}...")
+                # 1. Ingest Issues & Link to Repository and Engineer
+                if issues:
+                    session.run("""
+                    UNWIND $records AS rec
+                    MERGE (w:Workspace {id: $workspace_id})
+                    MERGE (repo:Repository {name: rec.repository})
+                    MERGE (w)-[:OWNS]->(repo)
+                    MERGE (user:Engineer {name: rec.author})
+                    MERGE (issue:Issue {id: rec.metadata_json.github_id})
+                    SET issue.title = rec.title, 
+                        issue.severity = rec.severity, 
+                        issue.state = rec.metadata_json.state,
+                        issue.number = rec.metadata_json.number
+                    MERGE (user)-[:REPORTED]->(issue)
+                    MERGE (issue)-[:BELONGS_TO]->(repo)
+                    """, records=issues, workspace_id=workspace_id)
+
+                # 2. Ingest Pull Requests & Link
+                if prs:
+                    session.run("""
+                    UNWIND $records AS rec
+                    MERGE (repo:Repository {name: rec.repository})
+                    MERGE (user:Engineer {name: rec.author})
+                    MERGE (pr:PullRequest {id: rec.metadata_json.github_id})
+                    SET pr.title = rec.title, 
+                        pr.state = rec.metadata_json.state,
+                        pr.number = rec.metadata_json.number
+                    MERGE (user)-[:OPENED_PR]->(pr)
+                    MERGE (pr)-[:TARGETS]->(repo)
+                    """, records=prs)
+
+                # 3. Ingest Commits & Link
+                if commits:
+                    session.run("""
+                    UNWIND $records AS rec
+                    MERGE (repo:Repository {name: rec.repository})
+                    MERGE (user:Engineer {name: rec.author})
+                    MERGE (commit:Commit {sha: rec.metadata_json.sha})
+                    SET commit.message = rec.title,
+                        commit.url = rec.metadata_json.url
+                    MERGE (user)-[:COMMITTED]->(commit)
+                    MERGE (commit)-[:APPLIED_TO]->(repo)
+                    """, records=commits)
+
+                # 4. The Magic AI Cross-Linking (Connecting PRs to Issues if mentioned in title/body)
+                # This uses Neo4j's string matching to automatically map "Fixes #123" logic.
+                session.run("""
+                MATCH (pr:PullRequest), (issue:Issue)
+                WHERE pr.title CONTAINS toString(issue.number) OR pr.state = 'merged'
+                MERGE (pr)-[:RESOLVES]->(issue)
+                """)
+
+                print("✅ [GraphDB] Knowledge Graph mapping complete!")
+
             except Exception as e:
-                print(f"🚨 [GraphDB Error] Failed to ingest real event: {e}")
+                print(f"🚨 [GraphDB Error] Failed to build graph: {e}")
 
     def get_active_issues(self, user_email: str, limit: int = 5):
         """
         Fetches REAL active engineering/product issues directly from the Graph.
         """
-        # Ye query real events pull karegi jo GitHub, Jira ya Zendesk se aaye hain
         query = """
-        MATCH (e:Event)
-        WHERE e.severity IN ['High', 'Critical', 'Medium']
-        RETURN e.title AS title, e.severity AS severity, e.source AS source
-        ORDER BY e.ingested_at DESC
+        MATCH (e:Issue)
+        WHERE e.severity IN ['High', 'Critical'] AND e.state = 'open'
+        RETURN e.title AS title, e.severity AS severity, 'github' AS source
         LIMIT $limit
         """
         
@@ -88,8 +124,6 @@ class Neo4jConnection:
                         "severity": record["severity"],
                         "source": record["source"]
                     })
-                
-                print(f"🔍 [GraphDB] Retrieved {len(real_issues)} real issues from Neo4j.")
                 return real_issues
 
         except Exception as e:
@@ -97,7 +131,6 @@ class Neo4jConnection:
             return []
 
     def get_causal_insights(self):
-        # Purana logic waisa hi rahega jab tak hum Revenue Agent ko fully connect na kar lein
         query = """
         MATCH (e:Event)-[:AFFECTS]->(c:Client)
         RETURN e.title AS RootCauseBug, 
@@ -114,6 +147,39 @@ class Neo4jConnection:
                         for r in result]
             except Exception as e:
                 return []
+    def get_root_cause_context(self, keyword: str):
+        """
+        [SPRINT 4] Searches the Knowledge Graph for a specific issue and traces it 
+        back to the Pull Request and Engineer.
+        """
+        # Cypher query to trace: Issue <-[RESOLVES]- PullRequest <-[OPENED_PR]- Engineer
+        query = """
+        MATCH (issue:Issue)
+        WHERE toLower(issue.title) CONTAINS toLower($keyword)
+        OPTIONAL MATCH (pr:PullRequest)-[:RESOLVES]->(issue)
+        OPTIONAL MATCH (eng:Engineer)-[:OPENED_PR]->(pr)
+        RETURN issue.title AS Bug_Title, 
+               issue.severity AS Severity, 
+               issue.state AS Issue_State,
+               pr.title AS Fixing_PR, 
+               pr.state AS PR_State, 
+               eng.name AS Responsible_Engineer
+        LIMIT 5
+        """
+        
+        try:
+            with self.driver.session() as session:
+                result = session.run(query, keyword=keyword)
+                context_data = []
+                for record in result:
+                    context_data.append(dict(record))
+                
+                print(f"🔍 [GraphDB] Found {len(context_data)} related nodes for keyword: '{keyword}'")
+                return context_data
+
+        except Exception as e:
+            print(f"🚨 [GraphDB Error] Root Cause Query failed: {e}")
+            return []            
 
 # Single Global Instance
 graph_db = Neo4jConnection()

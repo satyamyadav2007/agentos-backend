@@ -8,8 +8,8 @@ import { useAuth, useUser, UserButton } from '@clerk/nextjs';
 
 import { Sun, Moon, Settings, Database, ArrowDown, UserCheck, Plus } from 'lucide-react';
 import { Brain, MessageSquare, GitBranch, ServerCrash, Video, PhoneCall, Star, Smile, Cpu, TrendingUp, Briefcase, BarChart, RefreshCcw } from 'lucide-react';
-import { Search, AlertTriangle, TrendingDown, Users, Activity, CheckCircle, Clock, Loader2, LayoutDashboard, AlertOctagon, Map, Zap, UserMinus, ShieldAlert, Lightbulb, BarChart3, LineChart, Megaphone } from 'lucide-react';
-import { User, Ticket, Hash, TerminalSquare, GitCommit, Rocket, DollarSign, ArrowRight, Network, Mail, CheckCircle2 } from 'lucide-react';
+import { Search, AlertTriangle, TrendingDown, Users, Activity, CheckCircle, Clock,  LayoutDashboard, AlertOctagon, Map, Zap, UserMinus, ShieldAlert, Lightbulb, BarChart3, LineChart, Megaphone } from 'lucide-react';
+import { User, Ticket, Hash, TerminalSquare, GitCommit,FileText, X, Loader2, Rocket, DollarSign, ArrowRight, Network, Mail, CheckCircle2 } from 'lucide-react';
 
 export default function AICommandCenter() {
   const router = useRouter();
@@ -17,6 +17,9 @@ export default function AICommandCenter() {
   const [isSearching, setIsSearching] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('executive');
+  // ⚡ DYNAMIC STATE: Automatic PRD Modal
+  const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
+  const [activePRD, setActivePRD] = useState<{title: string, content: string} | null>(null);
   // ⚡ DYNAMIC STATE: Ab saare 7 metrics backend se aayenge
   const [dashboardStats, setDashboardStats] = useState({
     criticalIncidents: 0,
@@ -236,6 +239,38 @@ export default function AICommandCenter() {
       case 'blue': return { iconWrapper: 'border-[#111] bg-blue-900/50 text-blue-400', box: 'border-blue-900/30 bg-[#151515]', text: 'text-blue-400' };
       case 'gray': 
       default: return { iconWrapper: 'border-[#111] bg-gray-800 text-gray-400', box: 'border-gray-800 bg-[#151515]', text: 'text-gray-300' };
+    }
+  };
+  // ⚡ GENERATE PRD FUNCTION
+  const generateAutomaticPRD = async (feature: any) => {
+    setIsGeneratingPRD(true);
+    setActivePRD(null); // Reset old PRD
+    
+    try {
+      const token = await getToken();
+      const response = await fetch('http://localhost:8000/api/generate-prd', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: feature.title,
+          description: feature.description,
+          revenue_risk: feature.revUnlock // Passing potential revenue impact
+        })
+      });
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        setActivePRD({ title: feature.title, content: data.prd_content });
+      } else {
+        alert("🚨 Failed to generate PRD: " + data.message);
+      }
+    } catch (error) {
+      console.error("🚨 PRD Generation Error:", error);
+    } finally {
+      setIsGeneratingPRD(false);
     }
   };
 
@@ -1002,7 +1037,9 @@ export default function AICommandCenter() {
                 background: #555; 
               }
             `}</style>
+            
           </div>
+          
           {/* 🚀 10. AI INBOX (The Anti-Dashboard Daily Brief) */}
           <div className="bg-[#0a0a0a] border-l-4 border-blue-500 p-8 md:p-12 rounded-2xl w-full mb-12 shadow-2xl relative overflow-hidden group">
             
@@ -1064,6 +1101,7 @@ export default function AICommandCenter() {
             </div>
 
           </div>
+          
           {/* 🚀 11. AUTOMATION CENTER (No-Code Workflow Builder) */}
           <div className="bg-[#111] border border-gray-800 p-6 md:p-8 rounded-xl w-full mb-10">
             
@@ -1278,7 +1316,7 @@ export default function AICommandCenter() {
                     const hoverBorder = feature.scoreColor === 'blue' ? 'hover:border-blue-500/50' : 'hover:border-purple-500/50';
 
                     return (
-                      <div key={feature.id} onClick={() => handleAction(`View Feature: ${feature.title}`)} className={`grid grid-cols-12 gap-4 items-center bg-[#111] border border-gray-800 p-4 rounded-xl cursor-pointer transition-colors group ${hoverBorder}`}>
+                      <div key={feature.id} onClick={() => generateAutomaticPRD(feature)} className={`grid grid-cols-12 gap-4 items-center bg-[#111] border border-gray-800 p-4 rounded-xl cursor-pointer transition-colors group ${hoverBorder}`}>
                         <div className="col-span-4 flex flex-col">
                           <span className={`font-bold text-gray-200 transition-colors text-lg ${hoverTitle}`}>{feature.title}</span>
                           <span className="text-xs text-gray-500">{feature.description}</span>
@@ -1446,7 +1484,54 @@ export default function AICommandCenter() {
               })}
             </div>
           </div>
+          {/* 🚀 THE PRD MODAL OVERLAY */}
+      {(isGeneratingPRD || activePRD) && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 md:p-8 animate-fade-in">
+          <div className="bg-[#0a0a0a] border border-blue-900/50 w-full max-w-3xl rounded-2xl shadow-[0_0_50px_rgba(59,130,246,0.2)] overflow-hidden relative flex flex-col max-h-full">
+            
+            {/* Header */}
+            <div className="bg-[#111] border-b border-gray-800 p-6 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <FileText size={24} className="text-blue-500" /> 
+                {isGeneratingPRD ? "Synthesizing AI Product Requirement Document..." : `PRD: ${activePRD?.title}`}
+              </h3>
+              <button onClick={() => { setIsGeneratingPRD(false); setActivePRD(null); }} className="text-gray-500 hover:text-white transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-8 overflow-y-auto custom-scrollbar">
+              {isGeneratingPRD ? (
+                <div className="flex flex-col items-center justify-center py-20 text-blue-500 gap-4">
+                  <Loader2 className="animate-spin h-12 w-12" />
+                  <p className="font-mono text-sm tracking-widest uppercase">Fetching Knowledge Graph Context...</p>
+                </div>
+              ) : (
+                <div className="prose prose-invert prose-blue max-w-none text-gray-300 whitespace-pre-wrap font-medium leading-relaxed">
+                  {/* Rendering the Markdown-like response from Groq */}
+                  {activePRD?.content}
+                </div>
+              )}
+            </div>
+            
+            {/* Action Bar */}
+            {!isGeneratingPRD && (
+              <div className="bg-[#111] border-t border-gray-800 p-6 flex justify-end gap-4">
+                <button className="px-6 py-2.5 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 font-semibold transition-colors">
+                  Edit Manually
+                </button>
+                <button onClick={() => alert("Sent to Action Engine (Module 15)")} className="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-lg flex items-center gap-2">
+                  <Ticket size={18} /> Push to Jira
+                </button>
+              </div>
+            )}
+            
+          </div>
         </div>
+      )}
+        </div>
+
       </div>
     </div>
   </div>

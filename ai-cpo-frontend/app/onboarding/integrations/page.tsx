@@ -333,7 +333,7 @@ function IntegrationsContent() {
     }, 1500);
   };
 
-  // ==========================================
+  /// ==========================================
   // 🚀 START DATA SYNC (Mission Control Trigger)
   // ==========================================
   const handleNext = async () => {
@@ -354,7 +354,7 @@ function IntegrationsContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // ⚡ Ye line 401 error ko hamesha ke liye fix kar degi
+          'Authorization': `Bearer ${token}` // ⚡ Ye line 401 error ko fix karegi
         },
         body: JSON.stringify({
           workspace_id: workspaceId,
