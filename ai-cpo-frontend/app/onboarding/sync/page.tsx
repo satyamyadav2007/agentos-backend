@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs'; // ⚡ CLERK IMPORT
 import { 
   CheckCircle2, Loader2, Server, Database, BrainCircuit, 
   Activity, AlertCircle, ArrowRight, Network, GitPullRequest, 
@@ -11,57 +12,78 @@ import {
 export default function MissionControlSync() {
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
-  // 🧠 THE UNIVERSAL SYNC ENGINE STATE
+  const { getToken } = useAuth(); // ⚡ GET TOKEN FUNCTION
+
+  // 🧠 THE UNIVERSAL SYNC ENGINE STATE (Single Source of Truth)
   const [engineState, setEngineState] = useState({
     overallProgress: 0,
     eta: "Estimating...",
     isCoreComplete: false,
     apps: [] as {name: string, status: string, progress: number, items: string}[],
-    agents: [] as {name: string, status: string}[],
+    agents: [] as {name: string, status: string}[], // ⚡ AGENTS AB SIRF YAHAN HAIN
     metrics: { repos: 0, issues: 0, prs: 0, commits: 0 },
     dataQuality: { collected: 0, normalized: 0, embedded: 0, graphNodes: 0, relationships: 0 },
     earlyFindings: [] as {label: string, value: string}[],
     logs: [] as {time: string, source: string, msg: string}[]
   });
 
-  // UI ko change na karna pade isliye purane variables extract kar liye
+  // Extract variables for UI
   const { overallProgress, eta, isCoreComplete, apps,  metrics, dataQuality, earlyFindings, logs } = engineState;
-  // ⚡ COMBINED PIPELINE: Fetch Apps -> Setup UI -> Trigger Sync
+
+  // ⚡ MASTER PIPELINE: Fetch Status -> Fetch Agents -> Trigger Sync (ALL AUTHENTICATED)
   useEffect(() => {
     const initializeMissionControl = async () => {
       try {
         const workspaceId = localStorage.getItem('agentos_workspace_id');
         if (!workspaceId) return;
 
-        console.log("🔍 Fetching connected tools...");
+        const token = await getToken(); // ⚡ FETCH FRESH TOKEN
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // ⚡ INJECT TOKEN
+        };
+
+        console.log("🔍 Fetching connected tools and active agents...");
         
-        // 1. Backend se connected apps fetch karo
-        const statusRes = await fetch(`https://agentos-api-5suh.onrender.com/api/integrations/status?workspace_id=${workspaceId}`);
+        // 1. Fetch Connected Apps
+        const statusRes = await fetch(`https://agentos-api-5suh.onrender.com/api/integrations/status?workspace_id=${workspaceId}`, { headers });
         const statusData = await statusRes.json();
         
-        // Fallback: Agar backend empty de, toh explicitly 'github' pass karo
         const connectedTools = (statusData.connected_tools && statusData.connected_tools.length > 0) 
           ? statusData.connected_tools 
           : ["github"];
 
-        console.log("✅ Tools to sync:", connectedTools);
-
-        // 2. UI State Update Karo
         const dynamicApps = connectedTools.map((toolName: string) => ({
-          name: toolName.charAt(0).toUpperCase() + toolName.slice(1), // Capitalize
+          name: toolName.charAt(0).toUpperCase() + toolName.slice(1),
           status: 'waiting',
           progress: 0,
           items: 'Waiting'
         }));
-        setEngineState(prev => ({ ...prev, apps: dynamicApps }));
 
-        // 3. 🚀 TRIGGER THE BACKEND SYNC WITH THE INTEGRATIONS ARRAY
+        // 2. Fetch Active Agents
+        const agentsRes = await fetch(`https://agentos-api-5suh.onrender.com/api/agents/active?workspace_id=${workspaceId}`, { headers });
+        const agentsData = await agentsRes.json();
+        
+        const activeAgents = (agentsData.active_agents && agentsData.active_agents.length > 0)
+          ? agentsData.active_agents
+          : ["Data Normalizer Agent", "Knowledge Graph Builder", "AI CPO Analytics"]; // Fallbacks
+
+        const dynamicAgents = activeAgents.map((agentName: string) => ({
+          name: agentName,
+          status: 'waiting'
+        }));
+
+        // Update UI State Once
+        setEngineState(prev => ({ ...prev, apps: dynamicApps, agents: dynamicAgents }));
+
+        // 3. 🚀 TRIGGER THE BACKEND SYNC (NO MORE 401!)
+        console.log("🚀 Firing Authorized Sync Request...");
         await fetch('https://agentos-api-5suh.onrender.com/api/sync/start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ 
             workspace_id: workspaceId,
-            integrations: connectedTools // ⚡ THIS FIXES THE 0 RECORDS ISSUE
+            integrations: connectedTools
           })
         });
 
@@ -72,6 +94,11 @@ export default function MissionControlSync() {
 
     initializeMissionControl();
   }, []);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   
   

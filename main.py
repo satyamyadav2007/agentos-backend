@@ -5,51 +5,77 @@ import traceback
 import jwt
 import requests
 import uuid
-from sqlalchemy.orm import Session
-from database.postgres_setup import engine, get_db
-from database import models
+import time
 from datetime import datetime
-from pydantic import BaseModel
-from fastapi import HTTPException, Depends
-from typing import Optional
-from fastapi import Form
+from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, BackgroundTasks, File, UploadFile, Depends
+from fastapi import (
+    FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, 
+    BackgroundTasks, File, UploadFile, Depends, Form, APIRouter
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# Groq Client Initialization
 from groq import AsyncGroq
 from github import Github
 
-# Custom Agents & Managers (Ensure these exist in your project)
+# Custom Imports
+from database.postgres_setup import engine, get_db
+from database import models
 from os_kernel import kernel
 from orchestrator import run_orchestrator, process_single_issue
+from database.graph_manager import graph_db
+from core.event_bus import event_bus
+
+# Agents & Engines
 from agents.jira_agent import create_jira_ticket
 from agents.chat_agent import ask_executive_cpo
-from database.graph_manager import graph_db
-from integrations.manager import integration_manager
 from agents.support_agent import translate_customer_ticket
 from agents.normalizer_agent import normalize_universal_signal
+from agents.agents_role import get_cpo_persona
+from agents.theme_agent import ThemeAgent
+from agents.revenue_agent import revenue_agent
+from agents.recommendation_agent import recommendation_engine
+from agents.root_cause_agent import root_cause_engine
+from agents.prd_agent import prd_engine
+
 from adapters.webhook_router import identify_signal_source, normalize_pusher_payload
 from adapters.scraper_engine import scraper, wild_west_engine
 from adapters.action_engine import action_arm
 from adapters.crm_aggregator import crm_engine
 from adapters.apify_engine import apify_connector
 from adapters.log_engine import parse_engineering_logs
-from agents.agents_role import get_cpo_persona
-from agents.theme_agent import ThemeAgent
-from agents.revenue_agent import revenue_agent
-from dotenv import load_dotenv
-from contextlib import asynccontextmanager
-from core.event_bus import event_bus
-from agents.recommendation_agent import recommendation_engine
-load_dotenv() # ⚡ Yeh line tumhari .env file ke saare variables ko system mein load kar degi
+from adapters.nango_engine import nango_connector
+
+from integrations.manager import integration_manager
+from integrations.github.webhook import github_webhook_handler
+from integrations.jira.webhook import jira_webhook_handler
+from integrations.slack.webhook import slack_webhook_handler
+from integrations.zendesk.webhook import zendesk_webhook_handler
+from integrations.salesforce.webhook import salesforce_webhook_handler
+from integrations.hubspot.webhook import hubspot_webhook_handler
+from integrations.intercom.webhook import intercom_webhook_handler
+from integrations.discord.webhook import discord_webhook_handler
+from integrations.zoom.webhook import zoom_webhook_handler
+
+from services.velocity_engine import velocity_analytics
+from services.tech_debt_engine import tech_debt_engine
+
+# Load Environment Variables
+load_dotenv()
+
+# Initialize Global Clients
+groq_client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # ==========================================
 # 🚀 1. APP INITIALIZATION & MIDDLEWARE
 # ==========================================
-app = FastAPI(title="AgentOS Chief Product Officer API", version="1.1")
-models.Base.metadata.create_all(bind=engine)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Start the Event Bus
@@ -58,9 +84,9 @@ async def lifespan(app: FastAPI):
     # Shutdown: Stop the Event Bus gracefully
     await event_bus.stop()
 
-# Apne existing app instance me lifespan add kar do
-# (Agar pehle se koi app bana hua hai to usme lifespan=lifespan pass kar do)
-app = FastAPI(title="AgentOS API", lifespan=lifespan)
+# Initialize FastAPI App
+app = FastAPI(title="AgentOS Chief Product Officer API", version="1.1", lifespan=lifespan)
+models.Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,17 +106,12 @@ app.add_middleware(
 security = HTTPBearer()
 
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
-CLERK_ISSUER = os.getenv("CLERK_ISSUER")          # https://<your-clerk-domain>
-CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")      # Optional
-
-# Cache JWKS in production if possible
+CLERK_ISSUER = os.getenv("CLERK_ISSUER")
+CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
 JWKS_CACHE = None
 
-
 def verify_clerk_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """
-    Verify Clerk JWT and return authenticated user info. (Bulletproof Version)
-    """
+    """Verify Clerk JWT and return authenticated user info."""
     global JWKS_CACHE
     token = credentials.credentials
 
@@ -99,14 +120,11 @@ def verify_clerk_user(credentials: HTTPAuthorizationCredentials = Depends(securi
             print("🚨 [Auth Error]: Frontend didn't send a token!")
             raise HTTPException(status_code=401, detail="No token provided")
 
-        # 1. Fetch JWKS
         if JWKS_CACHE is None:
-            import requests
             response = requests.get(CLERK_JWKS_URL, timeout=5)
             response.raise_for_status()
             JWKS_CACHE = response.json()
 
-        # 2. Get Header & Key
         unverified_header = jwt.get_unverified_header(token)
         rsa_key = next(
             (key for key in JWKS_CACHE.get("keys", []) if key.get("kid") == unverified_header.get("kid")),
@@ -114,12 +132,9 @@ def verify_clerk_user(credentials: HTTPAuthorizationCredentials = Depends(securi
         )
 
         if rsa_key is None:
-            print("🚨 [Auth Error]: Invalid Clerk signing key.")
             raise HTTPException(status_code=401, detail="Invalid Clerk signing key.")
 
         public_key = jwt.algorithms.RSAAlgorithm.from_jwk(rsa_key)
-
-        # 3. Decode JWT (With Relaxed Audience check for Dev Mode)
         payload = jwt.decode(
             token,
             public_key,
@@ -128,12 +143,7 @@ def verify_clerk_user(credentials: HTTPAuthorizationCredentials = Depends(securi
             options={"verify_aud": False} 
         )
 
-        # 4. Extract Email (With Bulletproof Fallback)
-        email = (
-            payload.get("email")
-            or payload.get("primary_email_address")
-            or payload.get("email_address")
-        )
+        email = payload.get("email") or payload.get("primary_email_address") or payload.get("email_address")
 
         if not email:
             print("⚠️ [Auth Warning]: Email not in Clerk token. Using 'sub' (User ID) as fallback.")
@@ -141,26 +151,20 @@ def verify_clerk_user(credentials: HTTPAuthorizationCredentials = Depends(securi
             email = f"{user_id}@clerk.local"
 
         print(f"✅ [Auth Success]: User {email} verified successfully!")
-        
-        return {
-            "sub": payload.get("sub"),
-            "email": email,
-            "payload": payload,
-        }
+        return {"sub": payload.get("sub"), "email": email, "payload": payload}
 
     except jwt.ExpiredSignatureError:
-        print("🚨 [Auth Error]: The Token has EXPIRED. Refresh the frontend page.")
+        print("🚨 [Auth Error]: The Token has EXPIRED.")
         raise HTTPException(status_code=401, detail="Token Expired")
-        
     except jwt.InvalidTokenError as e: 
         print(f"🚨 [Auth Error]: Invalid Token or Claims: {e}")
         raise HTTPException(status_code=401, detail="Invalid Token")
-        
     except Exception as e:
         print(f"🚨 [Auth Error]: General failure -> {str(e)}")
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+# ==========================================
 # 📡 3. WEBSOCKET MANAGER
 # ==========================================
 class ConnectionManager:
@@ -185,6 +189,212 @@ class ConnectionManager:
 manager = ConnectionManager()
 ws_manager = ConnectionManager()
 
+# --- WebSocket Route ---
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+
+
+
+# ==========================================
+# 📋 4. DATA MODELS (Consolidated)
+# ==========================================
+class WorkspaceCreate(BaseModel):
+    companyName: str
+    industry: str
+    companySize: str
+    region: str
+
+class SyncStartPayload(BaseModel):
+    workspace_id: str
+    integrations: Optional[list[str]] = []
+
+class DashboardRequest(BaseModel):
+    user_email: str = "unknown@user.com" 
+
+class SearchQuery(BaseModel):
+    query: str
+    user_email: str = "unknown@user.com"
+
+class ChatPayload(BaseModel):
+    message: str
+    context_data: list = []
+
+class RootCauseRequest(BaseModel):
+    issue_keyword: str
+
+class PRDRequest(BaseModel):
+    title: str
+    description: str
+    revenue_risk: str
+
+class ActionRequest(BaseModel):
+    action_type: str
+    title: str = "Untitled Issue"
+    description: str = "No description provided."
+    severity: str = "Medium"
+    ticket_id: Optional[str] = None
+
+class GithubPayload(BaseModel):
+    repo_name: str
+    token: str
+
+class FeedbackPayload(BaseModel):
+    source: str
+    raw_text: str
+    user_email: str
+
+class JiraExportPayload(BaseModel):
+    title: Optional[str] = "AI Generated Jira Task"
+    prd_content: Optional[str] = "Auto-generated PRD details will appear here."
+    domain: Optional[str] = None
+    email: Optional[str] = None
+    token: Optional[str] = None
+    project_key: Optional[str] = "KAN"
+    prd_text: Optional[str] = None
+
+class ConnectPayload(BaseModel):
+    installation_id: str
+    workspace_id: str
+
+class IntegrationRequest(BaseModel):
+    platform: str
+    user_email: str
+    workspace_name: str
+
+class UniversalEvent(BaseModel):
+    title: str
+    text: str
+    source: str
+    severity: str
+    sentiment: str
+    url: str = ""
+
+# Integration Payloads
+class JiraConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    redirect_uri: Optional[str] = None
+
+class SlackConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    redirect_uri: Optional[str] = None
+
+class ZendeskConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    subdomain: str
+
+class SalesforceConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+
+class HubSpotConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    redirect_uri: Optional[str] = None
+
+class IntercomConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    redirect_uri: Optional[str] = None
+
+class DiscordConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+
+class RedditConnectPayload(BaseModel):
+    auth_code: str
+    workspace_id: str
+    redirect_uri: Optional[str] = None
+
+class AnalyticsConnectPayload(BaseModel):
+    provider: str
+    api_key: str
+    project_id: str
+    workspace_id: str
+
+class CrashesConnectPayload(BaseModel):
+    provider: str
+    api_key: str
+    org_slug: str
+    project_slug: str
+    workspace_id: str
+
+class YouTubeConnectPayload(BaseModel):
+    api_key: str
+    workspace_id: str
+
+class EmailConnectPayload(BaseModel):
+    provider: str
+    access_token: str
+    workspace_id: str
+
+class ZoomConnectPayload(BaseModel):
+    workspace_id: str
+
+class BitbucketConnectPayload(BaseModel):
+    token: str
+    username: Optional[str] = None
+    workspace_id: str
+
+class LinearConnectPayload(BaseModel):
+    api_key: str
+    workspace_id: str
+
+class FreshdeskConnectPayload(BaseModel):
+    api_key: str
+    domain: str
+    workspace_id: str
+
+class TwitterConnectPayload(BaseModel):
+    bearer_token: str
+    tracking_query: str
+    workspace_id: str
+
+class CommunityPayload(BaseModel):
+    api_key: str
+    domain: str
+    workspace_id: str
+
+class GA4Payload(BaseModel):
+    property_id: str
+    service_account_json: str
+    workspace_id: str
+
+class DatadogConnectPayload(BaseModel):
+    api_key: str
+    app_key: str
+    site: str
+    workspace_id: str
+
+class GoogleMeetConnectPayload(BaseModel):
+    access_token: str
+    workspace_id: str
+
+class ReviewsConnectPayload(BaseModel):
+    provider: str
+    app_id: str
+    workspace_id: str
+
+class KnowledgeConnectPayload(BaseModel):
+    provider: str
+    token: str
+    workspace_id: str
+
+class NangoWebhookPayload(BaseModel):
+    operation: str
+    provider_config_key: str
+    connection_id: str
+    model: str
+
 # 3. Uske baad tumhara Background Worker aayega
 async def run_ai_pipeline_in_background(request_type: str, payload: dict, user_email: str):
     print(f"\n⚙️ [Background Worker] Starting AI analysis for {user_email}...")
@@ -201,55 +411,8 @@ async def run_ai_pipeline_in_background(request_type: str, payload: dict, user_e
     except Exception as e:
         print(f"🚨 [Background Worker Error] Pipeline failed: {str(e)}")
 
-# --- WebSocket Route ---
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await ws_manager.connect(websocket)
-    try:
-        while True:
-            # Keep connection alive
-            data = await websocket.receive_text()
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
 
 
-# --- Data Models ---
-class GithubPayload(BaseModel):
-    repo_name: str
-    token: str
-
-class FeedbackPayload(BaseModel):
-    source: str
-    raw_text: str
-    user_email: str
-
-class JiraPayload(BaseModel):
-    domain: str
-    email: str
-    token: str
-    project_key: str
-    title: str
-    prd_text: str
-
-class ChatPayload(BaseModel):
-    message: str
-    context_data: list 
-
-class SupportTicketPayload(BaseModel):
-    ticket_text: str
-    user_email: str
-
-class JiraExportPayload(BaseModel):
-    title: Optional[str] = "AI Generated Jira Task"
-    prd_content: Optional[str] = "Auto-generated PRD details will appear here."
-    domain: Optional[str] = None
-    email: Optional[str] = None
-    token: Optional[str] = None
-    project_key: Optional[str] = "KAN"
-    prd_text: Optional[str] = None
-
-
-# --- REST Routes ---
 
 @app.get("/")
 async def root():
@@ -350,41 +513,65 @@ async def process_github_issues(request: Request, auth_payload: dict = Depends(v
             }))
     
     return {"status": "success", "data": results}
-from pydantic import BaseModel
-from fastapi import HTTPException
-from integrations.manager import integration_manager
 
-# Frontend se aane wale data ka schema
-class ConnectPayload(BaseModel):
-    installation_id: str
-    workspace_id: str
+# Helper function (Iske upar @app.post nahi aayega)
+def save_github_installation(workspace_id: str, installation_id: str, account_name: str):
+    db = SessionLocal()
+    try:
+        # Check if integration already exists
+        existing = db.query(WorkspaceIntegration).filter(
+            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.provider == "github"
+        ).first()
 
-import os
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+        if existing:
+            # Update existing
+            existing.installation_id = str(installation_id)
+            existing.account_name = account_name
+            existing.is_active = True
+        else:
+            # Create new record matching your schema
+            new_integration = WorkspaceIntegration(
+                workspace_id=workspace_id,
+                provider="github",
+                installation_id=str(installation_id),
+                account_name=account_name
+            )
+            db.add(new_integration)
+        
+        db.commit()
+        print(f"✅ [DB] Successfully saved GitHub Installation {installation_id} for Workspace {workspace_id}")
+    except Exception as e:
+        db.rollback()
+        print(f"🚨 [DB Error] Failed to save integration: {e}")
+    finally:
+        db.close()
 
-# ⚡ Dhyan rahe ki verify_clerk_user, ConnectPayload aur integration_manager imported ho
 
-# ⚡ THE FIXED GITHUB ROUTE
+# ⚡ THE ACTUAL API ROUTE
 @app.post("/api/integrations/github/connect")
 async def connect_tool(
-    # github: str,  <-- ❌ Is line ko delete kar diya gaya hai
     payload: ConnectPayload,
     auth_payload: dict = Depends(verify_clerk_user) 
 ):
-    # 'github' variable ki jagah seedha string "github" use kiya hai
     print(f"\n🔗 [AgentOS Integration] Connecting 'github' for workspace: {payload.workspace_id}")
     
     try:
+        # 1. ⚡ SABSE PEHLE DATABASE MEIN INSTALLATION_ID SAVE KARO
+        save_github_installation(
+            workspace_id=payload.workspace_id, 
+            installation_id=payload.installation_id, 
+            account_name="GitHub App"
+        )
+
+        # 2. BAAKI KA LOGIC (Token Generation & Sync)
         org_id = auth_payload.get("org_id", "default_org")
         
-        # 'github.lower()' ki jagah seedha "github" paas kiya
         connector_instance = integration_manager._registry["github"](
             workspace_id=payload.workspace_id, 
             org_id=org_id
         )
         
-        # Provider directly check karne ki zaroorat nahi kyunki ye route hi github ka hai
         private_key = os.getenv("GITHUB_PRIVATE_KEY")
         
         if not private_key:
@@ -403,7 +590,10 @@ async def connect_tool(
         
         try:
             print("⏳ Triggering initial sync...")
-            real_email = auth_payload.get("email_addresses", [{"email_address": "fallback@domain.com"}])[0]["email_address"]
+            # Safely fetching real email based on different Clerk payloads
+            emails = auth_payload.get("email_addresses", [])
+            real_email = emails[0]["email_address"] if emails else auth_payload.get("email", "fallback@domain.com")
+            
             sync_result = await connector_instance.sync(user_email=real_email)
             print("✅ Sync completed successfully")
         except Exception as sync_err:
@@ -420,11 +610,6 @@ async def connect_tool(
         print(f"🚨 [Integration Error]: {e}")
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
-
-class IntegrationRequest(BaseModel):
-    platform: str
-    user_email: str
-    workspace_name: str
  
 
 @app.post("/api/integrations/connect")
@@ -447,8 +632,6 @@ async def connect_integration(req: IntegrationRequest):
         "message": f"{req.platform} successfully authenticated and synced with AgentOS.",
         "platform": req.platform
     } 
-from fastapi import Request
-from integrations.github.webhook import github_webhook_handler
 
 # ==========================================
 # 🕸️ GITHUB LIVE WEBHOOK ROUTE
@@ -470,14 +653,7 @@ async def github_live_webhook(
         print(f"🚨 [Webhook Error]: {e}")
         return {"status": "error", "message": str(e)}
 
-# main.py ke andar
 
-# Naya schema Jira ke liye
-class JiraConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    redirect_uri: Optional[str] = None  # ⚡ Ye line add karo
-# ==========================================
 # 🔌 JIRA OAUTH ROUTE
 # ==========================================
 @app.post("/api/integrations/jira/connect")
@@ -497,8 +673,6 @@ async def connect_jira(payload: JiraConnectPayload):
     except Exception as e:
         print(f"🚨 [Jira Integration Error]: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
-from fastapi import Request
-from integrations.jira.webhook import jira_webhook_handler
 
 # ==========================================
 # 🕸️ JIRA LIVE WEBHOOK ROUTE
@@ -517,11 +691,7 @@ async def jira_live_webhook(request: Request):
         return {"status": "error", "message": str(e)}                        
 # main.py ke andar
 
-class SlackConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    redirect_uri: Optional[str] = None
-# ==========================================
+
 # 💬 SLACK OAUTH ROUTE
 # ==========================================
 @app.post("/api/integrations/slack/connect")
@@ -540,10 +710,7 @@ async def connect_slack(payload: SlackConnectPayload):
     except Exception as e:
         print(f"🚨 [Slack Integration Error]: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
-from fastapi import Request
-from integrations.slack.webhook import slack_webhook_handler
 
-# ==========================================
 # 🕸️ SLACK LIVE WEBHOOK ROUTE
 # ==========================================
 @app.post("/api/integrations/slack/webhook")
@@ -562,11 +729,7 @@ async def slack_live_webhook(request: Request):
     except Exception as e:
         print(f"🚨 [Slack Webhook Error]: {e}")
         return {"status": "error", "message": str(e)} 
-# Naya schema add karo
-class ZendeskConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    subdomain: str
+
 
 # ==========================================
 # 🎫 ZENDESK OAUTH ROUTE
@@ -587,10 +750,7 @@ async def connect_zendesk(payload: ZendeskConnectPayload):
     except Exception as e:
         print(f"🚨 [Zendesk Integration Error]: {e}")
         raise HTTPException(status_code=500, detail=str(e))  
-from fastapi import Request
-from integrations.zendesk.webhook import zendesk_webhook_handler
 
-# ==========================================
 # 🕸️ ZENDESK LIVE WEBHOOK ROUTE
 # ==========================================
 @app.post("/api/integrations/zendesk/webhook")
@@ -605,10 +765,6 @@ async def zendesk_live_webhook(request: Request):
     except Exception as e:
         print(f"🚨 [Zendesk Webhook Route Error]: {e}")
         return {"status": "error", "message": str(e)}  
-# Naya schema add karo
-class SalesforceConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
 
 # ==========================================
 # 💼 SALESFORCE OAUTH ROUTE
@@ -629,10 +785,7 @@ async def connect_salesforce(payload: SalesforceConnectPayload):
     except Exception as e:
         print(f"🚨 [Salesforce Integration Error]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-from fastapi import Request
-from integrations.salesforce.webhook import salesforce_webhook_handler
 
-# ==========================================
 # 💼 SALESFORCE LIVE WEBHOOK ROUTE
 # ==========================================
 @app.post("/api/integrations/salesforce/webhook")
@@ -647,12 +800,6 @@ async def salesforce_live_webhook(request: Request):
     except Exception as e:
         print(f"🚨 [Salesforce Webhook Route Error]: {e}")
         return {"status": "error", "message": str(e)}  
-from integrations.hubspot.webhook import hubspot_webhook_handler
-
-class HubSpotConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    redirect_uri: Optional[str] = None  # ✅ Allowed extra field 
 
 # 🟠 HUBSPOT OAUTH ROUTE
 @app.post("/api/integrations/hubspot/connect")
@@ -679,12 +826,6 @@ async def hubspot_live_webhook(request: Request):
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)} 
-from integrations.intercom.webhook import intercom_webhook_handler
-
-class IntercomConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    redirect_uri: Optional[str] = None  # ✅ Allowed extra field
 
 # 💬 INTERCOM OAUTH ROUTE
 @app.post("/api/integrations/intercom/connect")
@@ -710,11 +851,7 @@ async def intercom_live_webhook(request: Request):
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)} 
-from integrations.discord.webhook import discord_webhook_handler
 
-class DiscordConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
 
 # 🎮 DISCORD OAUTH ROUTE
 @app.post("/api/integrations/discord/connect")
@@ -740,10 +877,7 @@ async def discord_live_webhook(request: Request):
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)} 
-class RedditConnectPayload(BaseModel):
-    auth_code: str
-    workspace_id: str
-    redirect_uri: Optional[str] = None
+
 
 # 🔍 REDDIT OAUTH ROUTE
 @app.post("/api/integrations/reddit/connect")
@@ -759,11 +893,6 @@ async def connect_reddit(payload: RedditConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
-class AnalyticsConnectPayload(BaseModel):
-    provider: str
-    api_key: str
-    project_id: str
-    workspace_id: str
 
 # 📊 UNIFIED ANALYTICS ROUTE (PostHog, Mixpanel, Amplitude)
 @app.post("/api/integrations/analytics/connect")
@@ -783,12 +912,7 @@ async def connect_analytics(payload: AnalyticsConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))                                          
-class CrashesConnectPayload(BaseModel):
-    provider: str
-    api_key: str
-    org_slug: str
-    project_slug: str
-    workspace_id: str
+
 
 # 🔥 UNIFIED CRASHES ROUTE (Sentry & Crashlytics)
 @app.post("/api/integrations/crashes/connect")
@@ -809,9 +933,7 @@ async def connect_crashes(payload: CrashesConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
-class YouTubeConnectPayload(BaseModel):
-    api_key: str
-    workspace_id: str
+
 
 # ▶️ YOUTUBE API ROUTE
 @app.post("/api/integrations/youtube/connect")
@@ -827,10 +949,7 @@ async def connect_youtube(payload: YouTubeConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
-class EmailConnectPayload(BaseModel):
-    provider: str
-    access_token: str
-    workspace_id: str
+
 
 @app.post("/api/integrations/email/connect")
 async def connect_email(payload: EmailConnectPayload):
@@ -845,10 +964,7 @@ async def connect_email(payload: EmailConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))  
-from integrations.zoom.webhook import zoom_webhook_handler
 
-class ZoomConnectPayload(BaseModel):
-    workspace_id: str
 
 # 📹 ZOOM CONNECT ROUTE
 @app.post("/api/integrations/zoom/connect")
@@ -875,13 +991,7 @@ async def zoom_live_webhook(request: Request):
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)} 
-from typing import Optional
-from pydantic import BaseModel
 
-class BitbucketConnectPayload(BaseModel):
-    token: str
-    username: Optional[str] = None
-    workspace_id: str
 
 # 🪣 BITBUCKET CONNECT ROUTE
 @app.post("/api/integrations/bitbucket/connect")
@@ -900,13 +1010,7 @@ async def connect_bitbucket(payload: BitbucketConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))  
-from pydantic import BaseModel
 
-class LinearConnectPayload(BaseModel):
-    api_key: str
-    workspace_id: str
-
-# 🎯 LINEAR CONNECT ROUTE
 @app.post("/api/integrations/linear/connect")
 async def connect_linear(payload: LinearConnectPayload):
     print(f"\n🔗 [Integration API] Authenticating Linear for workspace: {payload.workspace_id}")
@@ -922,10 +1026,6 @@ async def connect_linear(payload: LinearConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))  
-class FreshdeskConnectPayload(BaseModel):
-    api_key: str
-    domain: str
-    workspace_id: str
 
 @app.post("/api/integrations/freshdesk/connect")
 async def connect_freshdesk(payload: FreshdeskConnectPayload):
@@ -943,10 +1043,7 @@ async def connect_freshdesk(payload: FreshdeskConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
-class TwitterConnectPayload(BaseModel):
-    bearer_token: str
-    tracking_query: str
-    workspace_id: str
+
 
 @app.post("/api/integrations/twitter/connect")
 async def connect_twitter(payload: TwitterConnectPayload):
@@ -964,15 +1061,6 @@ async def connect_twitter(payload: TwitterConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-class CommunityPayload(BaseModel):
-    api_key: str
-    domain: str
-    workspace_id: str
-
-class GA4Payload(BaseModel):
-    property_id: str
-    service_account_json: str # Normally securely uploaded, simplified here
-    workspace_id: str
 
 @app.post("/api/integrations/community/connect")
 async def connect_community(payload: CommunityPayload):
@@ -981,11 +1069,7 @@ async def connect_community(payload: CommunityPayload):
 @app.post("/api/integrations/ga4/connect")
 async def connect_ga4(payload: GA4Payload):
     return await integration_manager.connect_integration("ga4", payload.workspace_id, "org_1", {"property_id": payload.property_id}) 
-class DatadogConnectPayload(BaseModel):
-    api_key: str
-    app_key: str
-    site: str
-    workspace_id: str
+
 
 @app.post("/api/integrations/datadog/connect")
 async def connect_datadog(payload: DatadogConnectPayload):
@@ -1004,19 +1088,13 @@ async def connect_datadog(payload: DatadogConnectPayload):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-class GoogleMeetConnectPayload(BaseModel):
-    access_token: str
-    workspace_id: str
 
 @app.post("/api/integrations/google_meet/connect")
 async def connect_google_meet(payload: GoogleMeetConnectPayload):
     return await integration_manager.connect_integration(
         "google_meet", payload.workspace_id, "org_1", {"access_token": payload.access_token}
     )                                                                        
-class ReviewsConnectPayload(BaseModel):
-    provider: str # 'appstore', 'googleplay', 'chrome'
-    app_id: str
-    workspace_id: str
+
 
 @app.post("/api/integrations/reviews/connect")
 async def connect_reviews(payload: ReviewsConnectPayload):
@@ -1035,10 +1113,7 @@ async def connect_reviews(payload: ReviewsConnectPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-class KnowledgeConnectPayload(BaseModel):
-    provider: str # 'notion', 'confluence', 'google_docs'
-    token: str
-    workspace_id: str
+
 
 @app.post("/api/integrations/knowledge/connect")
 async def connect_knowledge(payload: KnowledgeConnectPayload):
@@ -1057,13 +1132,7 @@ async def connect_knowledge(payload: KnowledgeConnectPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))                                            
 
-# main.py ke andar SIRF yeh ek Chat Route hona chahiye:
-from pydantic import BaseModel
-from agents.chat_agent import ask_executive_cpo
 
-class ChatPayload(BaseModel):
-    message: str
-    context_data: list = []
 
 @app.post("/api/chat")
 async def executive_chat(payload: ChatPayload):
@@ -1077,11 +1146,6 @@ async def executive_chat(payload: ChatPayload):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-# main.py ke imports section mein:
-from agents.root_cause_agent import root_cause_engine
-
-class RootCauseRequest(BaseModel):
-    issue_keyword: str
 
 # ==========================================
 # 🔍 SPRINT 4: AI ROOT CAUSE ENDPOINT (Module 10)
@@ -1100,13 +1164,7 @@ async def get_root_cause(
     result = await root_cause_engine.analyze_issue(payload.issue_keyword)
     
     return result  
-from pydantic import BaseModel
-from agents.prd_agent import prd_engine
 
-class PRDRequest(BaseModel):
-    title: str
-    description: str
-    revenue_risk: str
 
 # ==========================================
 # 📝 SPRINT 5: AUTOMATIC PRD ENGINE (Module 14)
@@ -1148,7 +1206,6 @@ async def generate_prd_endpoint(
     except Exception as e:
         print(f"🚨 [PRD API Error]: {e}")
         return {"status": "error", "message": str(e)}  
-from services.velocity_engine import velocity_analytics
 
 # ==========================================
 # 📊 SPRINT 6: VELOCITY ANALYTICS (Module 11)
@@ -1169,7 +1226,7 @@ async def get_velocity_metrics(
     except Exception as e:
         print(f"🚨 [Velocity Analytics Error]: {e}")
         return {"status": "error", "message": str(e)} 
-from services.tech_debt_engine import tech_debt_engine
+
 
 # ==========================================
 # 🧹 SPRINT 7: TECHNICAL DEBT ENGINE (Module 12)
@@ -1330,17 +1387,7 @@ async def sync_social_signals(background_tasks: BackgroundTasks):
         "status": "success", 
         "message": f"AgentOS is processing {len(raw_signals)} social signals in the background."
     }   
-from pydantic import BaseModel
-from adapters.action_engine import action_arm
-
-class ActionRequest(BaseModel):
-    action_type: str # e.g., "create_ticket", "reply_customer"
-    title: str = "Untitled Issue"
-    description: str = "No description provided."
-    severity: str = "Medium"
-    ticket_id: str = None # Required for Zendesk
-
-# ==========================================
+=
 # ⚡ SPRINT 4: OUTBOUND ACTION ENGINE ROUTE
 # ==========================================
 @app.post("/api/execute-action")
@@ -1407,20 +1454,6 @@ async def process_universal_signal_bg(source: str, raw_data_str: str):
         
     except Exception as e:
         print(f"🚨 [Engine Error] Processing sequence halted safely: {e}")  
-class UnifiedWebhookPayload(BaseModel):
-    integration_type: str # e.g., "ticketing", "crm"
-    account_token: str
-    data: dict
-
-# ⚡ THE 21-IN-1 MASTER ROUTE
-from adapters.nango_engine import nango_connector
-from pydantic import BaseModel
-
-class NangoWebhookPayload(BaseModel):
-    operation: str
-    provider_config_key: str
-    connection_id: str
-    model: str
 
 # ⚡ THE NANGO MASTER ROUTE
 @app.post("/api/nango-webhook")
@@ -1508,15 +1541,6 @@ async def process_machine_bg(payload: dict, source: str):
     
     # 2. Feed the messy log to our Master Normalizer!
     await process_universal_signal_bg(source, parsed_log["raw_text"])  
-import traceback
-from fastapi import HTTPException, Depends
-from pydantic import BaseModel
-
-class SearchQuery(BaseModel):
-    query: str
-    user_email: str = "unknown@user.com"
-class DashboardRequest(BaseModel):
-    user_email: str = "unknown@user.com"    
 
 # ==========================================
 # 🧠 DYNAMIC CONTEXT BUILDER (Enterprise RAG Engine)
@@ -1898,11 +1922,6 @@ async def get_dashboard_stats(
         print(f"🚨 Error generating dashboard stats: {e}")
         return {"status": "error", "message": str(e)}
         
-class WorkspaceCreate(BaseModel):
-    companyName: str
-    industry: str
-    companySize: str
-    region: str
 
 # ==========================================
 # 🚀 THE WORKSPACE BOOTSTRAP ENGINE
@@ -1968,17 +1987,9 @@ async def create_workspace(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="CRITICAL: Failed to save workspace in Postgres.")
-import uuid
-from fastapi import BackgroundTasks
-from pydantic import BaseModel
-from typing import Optional, List  # ⚡ Add List here
-
-# ⚡ In-Memory Job Store (MVP ke liye. Production me Redis use karna)
+a)
 sync_jobs = {}
 
-class SyncStartPayload(BaseModel):
-    workspace_id: str
-    integrations: Optional[list[str]] = []
 
 async def execute_universal_sync(job_id: str, workspace_id: str, integrations: list[str]):
     try:
@@ -2029,19 +2040,9 @@ async def execute_universal_sync(job_id: str, workspace_id: str, integrations: l
 
 
 
-import json
-import asyncio
-import time
-from fastapi import BackgroundTasks, Depends
-from pydantic import BaseModel
-from typing import Optional, List
-import uuid
 
-# ==========================================
-# 🚀 THE REAL MISSION CONTROL SYNC ENGINE
-# ==========================================
 
-class SyncStartPayload(BaseModel):
+
     workspace_id: str
     integrations: Optional[list[str]] = []
 async def execute_mission_control_sync(workspace_id: str, user_email: str, requested_integrations: list):
@@ -2302,11 +2303,6 @@ async def get_job_status(job_id: str):
         return {"status": "error", "message": "Job not found"}
     return sync_jobs[job_id]
 
-from fastapi import APIRouter, Depends
-from typing import Dict, Any
-
-# Assuming you have a router or just use your main `app` instance
-# router = APIRouter()
 
 @app.get("/api/dashboard/insights")
 async def get_dashboard_insights():
