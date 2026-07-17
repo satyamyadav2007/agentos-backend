@@ -514,14 +514,12 @@ async def process_github_issues(request: Request, auth_payload: dict = Depends(v
     
     return {"status": "success", "data": results}
 
-# Helper function (Iske upar @app.post nahi aayega)
-def save_github_installation(workspace_id: str, installation_id: str, account_name: str):
-    db = SessionLocal()
+def save_github_installation(db: Session, workspace_id: str, installation_id: str, account_name: str):
     try:
-        # Check if integration already exists
-        existing = db.query(WorkspaceIntegration).filter(
-            WorkspaceIntegration.workspace_id == workspace_id,
-            WorkspaceIntegration.provider == "github"
+        # Check if integration already exists (models.WorkspaceIntegration use kiya hai)
+        existing = db.query(models.WorkspaceIntegration).filter(
+            models.WorkspaceIntegration.workspace_id == workspace_id,
+            models.WorkspaceIntegration.provider == "github"
         ).first()
 
         if existing:
@@ -531,7 +529,7 @@ def save_github_installation(workspace_id: str, installation_id: str, account_na
             existing.is_active = True
         else:
             # Create new record matching your schema
-            new_integration = WorkspaceIntegration(
+            new_integration = models.WorkspaceIntegration(
                 workspace_id=workspace_id,
                 provider="github",
                 installation_id=str(installation_id),
@@ -544,21 +542,21 @@ def save_github_installation(workspace_id: str, installation_id: str, account_na
     except Exception as e:
         db.rollback()
         print(f"🚨 [DB Error] Failed to save integration: {e}")
-    finally:
-        db.close()
 
 
 # ⚡ THE ACTUAL API ROUTE
 @app.post("/api/integrations/github/connect")
 async def connect_tool(
     payload: ConnectPayload,
-    auth_payload: dict = Depends(verify_clerk_user) 
+    auth_payload: dict = Depends(verify_clerk_user),
+    db: Session = Depends(get_db) # ⚡ NAYA: Database session ko inject kiya
 ):
     print(f"\n🔗 [AgentOS Integration] Connecting 'github' for workspace: {payload.workspace_id}")
     
     try:
-        # 1. ⚡ SABSE PEHLE DATABASE MEIN INSTALLATION_ID SAVE KARO
+        # 1. ⚡ DATABASE MEIN INSTALLATION_ID SAVE KARO (injected db pass karke)
         save_github_installation(
+            db=db,
             workspace_id=payload.workspace_id, 
             installation_id=payload.installation_id, 
             account_name="GitHub App"
