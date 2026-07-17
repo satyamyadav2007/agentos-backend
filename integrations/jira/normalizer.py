@@ -5,37 +5,23 @@ class JiraNormalizer:
     @staticmethod
     def normalize_issue(raw_issue: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a raw Jira Issue into the AgentOS UniversalEvent format."""
-        
         fields = raw_issue.get("fields", {})
         issue_type = fields.get("issuetype", {}).get("name", "Task").lower()
         
-        # Map Jira priority to AgentOS Severity
         jira_priority = fields.get("priority", {}).get("name", "Medium").lower()
-        severity_map = {
-            "highest": "Critical",
-            "high": "High",
-            "medium": "Medium",
-            "low": "Low",
-            "lowest": "Low"
-        }
+        severity_map = {"highest": "Critical", "high": "High", "medium": "Medium", "low": "Low", "lowest": "Low"}
         severity = severity_map.get(jira_priority, "Medium")
         
-        # Extract description (Jira v3 uses Atlassian Document Format, simplifying for now)
         description_raw = fields.get("description")
-        description_text = "No description provided."
-        if isinstance(description_raw, dict):
-            # Extract plain text from ADF if needed, or stringify
-            description_text = str(description_raw)
-        elif isinstance(description_raw, str):
-            description_text = description_raw
+        description_text = str(description_raw) if isinstance(description_raw, dict) else (description_raw or "No description provided.")
 
         assignee = fields.get("assignee")
         author = assignee.get("displayName") if assignee else "Unassigned"
 
         return {
             "source": "jira",
-            "entity_type": issue_type,  # e.g., 'story', 'bug', 'epic'
-            "repository": raw_issue.get("key").split("-")[0], # Project Key as repo equivalent
+            "entity_type": issue_type, 
+            "repository": raw_issue.get("key", "").split("-")[0],
             "title": fields.get("summary", "Untitled Issue"),
             "description": description_text,
             "author": author,
@@ -45,6 +31,47 @@ class JiraNormalizer:
                 "jira_id": raw_issue.get("id"),
                 "key": raw_issue.get("key"),
                 "status": fields.get("status", {}).get("name")
+            },
+            "linked_entities": []
+        }
+
+    @staticmethod
+    def normalize_epic(raw_epic: Dict[str, Any], project_key: str) -> Dict[str, Any]:
+        """Converts a Jira Epic into the AgentOS UniversalEvent format."""
+        fields = raw_epic.get("fields", {})
+        return {
+            "source": "jira",
+            "entity_type": "epic",
+            "repository": project_key,
+            "title": fields.get("summary", "Untitled Epic"),
+            "description": "Epic level initiative.",
+            "author": fields.get("creator", {}).get("displayName", "System"),
+            "severity": "High", # Epics usually have high business impact
+            "timestamp": fields.get("created"),
+            "metadata": {
+                "jira_id": raw_epic.get("id"),
+                "key": raw_epic.get("key"),
+                "status": fields.get("status", {}).get("name")
+            },
+            "linked_entities": []
+        }
+
+    @staticmethod
+    def normalize_sprint(raw_sprint: Dict[str, Any], project_key: str) -> Dict[str, Any]:
+        """Converts an Active Sprint into the AgentOS UniversalEvent format."""
+        return {
+            "source": "jira",
+            "entity_type": "sprint",
+            "repository": project_key,
+            "title": raw_sprint.get("name", "Unnamed Sprint"),
+            "description": raw_sprint.get("goal", "No sprint goal defined."),
+            "author": "Jira Agile Board",
+            "severity": "Medium",
+            "timestamp": raw_sprint.get("startDate"),
+            "metadata": {
+                "jira_id": str(raw_sprint.get("id")),
+                "status": raw_sprint.get("state", "active"),
+                "end_date": raw_sprint.get("endDate")
             },
             "linked_entities": []
         }

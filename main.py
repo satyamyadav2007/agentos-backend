@@ -514,34 +514,51 @@ async def process_github_issues(request: Request, auth_payload: dict = Depends(v
     
     return {"status": "success", "data": results}
 
-def save_github_installation(db: Session, workspace_id: str, installation_id: str, account_name: str):
+def save_github_installation(
+    db: Session,
+    workspace_id: str,
+    installation_id: str,
+    account_name: str
+):
     try:
-        # Check if integration already exists (models.WorkspaceIntegration use kiya hai)
-        existing = db.query(models.WorkspaceIntegration).filter(
-            models.workspace_id == workspace_id,
-            models.WorkspaceIntegration.provider == "github"
-        ).first()
+
+        existing = (
+            db.query(models.WorkspaceIntegration)
+            .filter(
+                models.WorkspaceIntegration.workspace_id == workspace_id,
+                models.WorkspaceIntegration.provider == "github"
+            )
+            .first()
+        )
 
         if existing:
-            # Update existing
             existing.installation_id = str(installation_id)
             existing.account_name = account_name
             existing.is_active = True
+
         else:
-            # Create new record matching your schema
-            new_integration = models.WorkspaceIntegration(
+            integration = models.WorkspaceIntegration(
                 workspace_id=workspace_id,
                 provider="github",
                 installation_id=str(installation_id),
-                account_name=account_name
+                account_name=account_name,
+                is_active=True
             )
-            db.add(new_integration)
-        
+            db.add(integration)
+
         db.commit()
-        print(f"✅ [DB] Successfully saved GitHub Installation {installation_id} for Workspace {workspace_id}")
+
+        print(
+            f"✅ [DB] Successfully saved GitHub Installation "
+            f"{installation_id} for Workspace {workspace_id}"
+        )
+
+        return True
+
     except Exception as e:
         db.rollback()
-        print(f"🚨 [DB Error] Failed to save integration: {e}")
+        print(f"🚨 [DB Error] {e}")
+        raise
 
 
 # ⚡ THE ACTUAL API ROUTE
