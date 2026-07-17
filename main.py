@@ -662,7 +662,7 @@ async def github_live_webhook(
     try:
         payload = await request.json()
         # Webhook handler ko data ke sath db bhi pass karo
-        result = await github_webhook_handler.handle_event(event_name, payload, db) # ⚡ FIX 2: 'db' pass kiya
+        result = await github_webhook_handler.handle_event(event_name, payload) # ⚡ FIX 2: 'db' pass kiya
         return result
     except Exception as e:
         print(f"🚨 [Webhook Error]: {e}")

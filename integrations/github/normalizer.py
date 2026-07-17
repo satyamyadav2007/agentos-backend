@@ -18,6 +18,7 @@ class GitHubNormalizer:
             severity = "Low"
 
         return {
+            "id": str(raw_issue.get("id", raw_issue.get("number"))),
             "source": "github",
             "entity_type": "issue",
             "repository": repo_name,
@@ -39,6 +40,7 @@ class GitHubNormalizer:
     def normalize_pr(pr_data: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
         """Normalizes a GitHub Pull Request."""
         return {
+            "id": str(raw_issue.get("id", raw_issue.get("number"))),
             "source": "github",
             "entity_type": "pull_request",
             "repository": repo_name,
@@ -71,6 +73,7 @@ class GitHubNormalizer:
             severity = "High"
 
         return {
+            "id": str(raw_issue.get("id", raw_issue.get("number"))),
             "source": "github",
             "entity_type": "commit",
             "repository": repo_name,
@@ -94,6 +97,7 @@ class GitHubNormalizer:
             severity = "High" # Failed builds are critical blockers
             
         return {
+            "id": str(raw_run.get("id")),
             "source": "github",
             "entity_type": "ci_cd_run",
             "repository": repo_name,
@@ -123,6 +127,7 @@ class GitHubNormalizer:
             title_name = release_dict.get('tag_name', 'Unknown Version')
 
         return {
+            "id": str(raw_release.get("id")),
             "source": "github",
             "entity_type": "release",
             "repository": repo_name,
@@ -135,4 +140,37 @@ class GitHubNormalizer:
                 "is_production": not is_draft and not is_prerelease,
                 "url": release_dict.get("html_url")
             }
-        }       
+        } 
+    @staticmethod
+    def normalize_discussion(discussion_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
+        """Normalizes a GitHub GraphQL Discussion into a Universal Event."""
+        
+        category = discussion_dict.get("category", {}).get("name", "General")
+        
+        # Smart AI Pre-processing: Bugs or Feature Requests have higher impact than Q&A
+        severity = "Low"
+        if category.lower() in ["bug", "ideas", "feature request"]:
+            severity = "Medium"
+            
+        author_data = discussion_dict.get("author")
+        
+        author_name = author_data.get("login") if author_data else "Unknown"
+        discussion_id = raw_discussion.get("id") or raw_discussion.get("number")
+
+        return {
+            "id": str(discussion_id),
+            "source": "github",
+            "entity_type": "discussion",
+            "repository": repo_name,
+            "title": f"[{category}] {discussion_dict.get('title', 'Untitled')}",
+            "description": discussion_dict.get("bodyText", "No content provided.")[:1000],
+            "severity": severity,
+            "author": author_name,
+            "metadata_json": {
+                "github_id": discussion_dict.get("id"),
+                "category": category,
+                "url": discussion_dict.get("url"),
+                "created_at": discussion_dict.get("createdAt")
+            }
+        }          
+
