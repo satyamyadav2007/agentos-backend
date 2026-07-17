@@ -8,6 +8,7 @@ from integrations.github.extractors.commits import GitHubCommitExtractor
 from integrations.github.extractors.actions import GitHubActionsExtractor
 from integrations.github.extractors.releases import GitHubReleasesExtractor
 from integrations.github.extractors.discussions import GitHubDiscussionsExtractor
+from integrations.github.extractors.pull_requests import GitHubPRExtractor
 # Dhyan rakhna ki GitHubPRExtractor bhi import ho (agar tumhare code me nahi hai toh)
 
 class GitHubSyncService:
