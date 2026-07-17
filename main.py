@@ -518,7 +518,7 @@ def save_github_installation(db: Session, workspace_id: str, installation_id: st
     try:
         # Check if integration already exists (models.WorkspaceIntegration use kiya hai)
         existing = db.query(models.WorkspaceIntegration).filter(
-            models.WorkspaceIntegration.workspace_id == workspace_id,
+            models.workspace_id == workspace_id,
             models.WorkspaceIntegration.provider == "github"
         ).first()
 

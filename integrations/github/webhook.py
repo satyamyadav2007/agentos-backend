@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from .normalizer import GitHubNormalizer
 from sqlalchemy.orm import Session
-from models.db_models import WorkspaceIntegration
+from database.models import WorkspaceIntegration
 
 class GitHubWebhookHandler:
     def __init__(self):

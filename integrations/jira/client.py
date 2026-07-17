@@ -1,17 +1,19 @@
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 class JiraClient:
     """
-    Centralized HTTP Client for all Atlassian/Jira API calls.
-    Handles authentication injection, retries, and rate-limiting.
+    Enterprise HTTP Client for all Atlassian/Jira API calls.
+    Gracefully handles REST (v3) and Agile (v1.0) APIs without crashing.
     """
     def __init__(self, access_token: str, cloud_id: str):
         self.access_token = access_token
         self.cloud_id = cloud_id
-        # Atlassian API routes through api.atlassian.com using the cloud_id
-        self.base_url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3"
-        self.timeout = httpx.Timeout(20.0)
+        
+        # ⚡ FIX 1: Base URL ab sirf root tak hai. 
+        # Extractors ab explicitly path batayenge (e.g., 'rest/api/3/search' ya 'rest/agile/1.0/board')
+        self.base_url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}"
+        self.timeout = httpx.Timeout(30.0) # Extended timeout for heavy Jira payloads
 
     @property
     def _headers(self) -> Dict[str, str]:
@@ -21,21 +23,46 @@ class JiraClient:
             "Content-Type": "application/json"
         }
 
-    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], list]:
+        """Executes a GET request with graceful error handling."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, headers=self._headers, params=params)
-            
-            if response.status_code == 429:
-                print("⚠️ [Jira Client] Rate limit exceeded. (Should implement retry logic here)")
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=self._headers, params=params)
                 
-            response.raise_for_status()
-            return response.json()
+                # ⚡ FIX 2: Graceful Error Handling to save the pipeline
+                if response.status_code == 429:
+                    print(f"⚠️ [Jira Client] Rate limit exceeded for {endpoint}! Bypassing...")
+                    return {} # Safely return empty instead of crashing
+                
+                if response.status_code in [400, 401, 403, 404]:
+                    print(f"⚠️ [Jira Client] Resource unavailable ({response.status_code}) for {endpoint}")
+                    return {} # Prevents crashes if a board lacks sprints/epics
 
-    async def post(self, endpoint: str, json_data: Dict[str, Any]) -> Dict[str, Any]:
+                response.raise_for_status()
+                return response.json()
+                
+        except Exception as e:
+            print(f"🚨 [Jira Client] Network Error on GET {url}: {str(e)}")
+            return {}
+
+    async def post(self, endpoint: str, json_data: Dict[str, Any]) -> Union[Dict[str, Any], list]:
+        """Executes a POST request (mainly used for complex JQL searches)."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, headers=self._headers, json=json_data)
-            response.raise_for_status()
-            return response.json()
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, headers=self._headers, json=json_data)
+                
+                if response.status_code in [400, 401, 403, 404]:
+                    print(f"⚠️ [Jira Client] POST Failed ({response.status_code}): {endpoint}")
+                    # Usually invalid JQL or missing permissions
+                    return {}
+
+                response.raise_for_status()
+                return response.json()
+                
+        except Exception as e:
+            print(f"🚨 [Jira Client] Network Error on POST {url}: {str(e)}")
+            return {}

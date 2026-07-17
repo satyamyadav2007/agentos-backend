@@ -1,10 +1,10 @@
-from sqlalchemy import Column, String, DateTime
+
 from datetime import datetime
 import uuid
 from database.postgres_setup import Base
 from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean
 from sqlalchemy.sql import func
-from .postgres_setup import Base
+
 
 def generate_enterprise_id(prefix: str):
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
