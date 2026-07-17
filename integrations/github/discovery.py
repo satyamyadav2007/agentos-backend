@@ -1,40 +1,61 @@
-import requests
-from typing import Dict, Any, List
+from typing import List, Dict, Any
+
 
 class GitHubDiscovery:
-    def __init__(self, token: str):
-        self.token = token
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
+    """
+    Discovers all repositories that the GitHub App Installation
+    has access to.
 
-    def fetch_repositories(self) -> List[Dict[str, Any]]:
-        """Fetches all repositories this GitHub App installation has access to."""
-        print("🔍 [GitHub Discovery] Scanning for authorized repositories...")
-        url = "https://api.github.com/installation/repositories"
-        
-        response = requests.get(url, headers=self.headers)
-        
-        if response.status_code != 200:
-            print(f"🚨 [GitHub Discovery] Failed to fetch repos: {response.text}")
+    Uses the shared async GitHub client so the architecture matches
+    all other extractors (Issues, PRs, Commits, Actions).
+    """
+
+    def __init__(self, client):
+        self.client = client
+
+    async def fetch_authorized_repos(
+        self,
+        installation_id: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns all repositories accessible to the installation.
+
+        installation_id is kept only for API compatibility with
+        GitHubSyncService. It is not required because the
+        installation token already identifies the installation.
+        """
+
+        print("🔍 [GitHub Discovery] Scanning authorized repositories...")
+
+        try:
+            data = await self.client.get(
+                "installation/repositories"
+            )
+
+            repositories = []
+
+            for repo in data.get("repositories", []):
+                repositories.append({
+                    "id": repo["id"],
+                    "name": repo["name"],
+                    "full_name": repo["full_name"],
+                    "private": repo.get("private", False),
+                    "default_branch": repo.get("default_branch"),
+                    "language": repo.get("language"),
+                    "open_issues_count": repo.get("open_issues_count", 0),
+                })
+
+                print(
+                    f"   📦 Found Repo: {repo['full_name']} "
+                    f"(Language: {repo.get('language')})"
+                )
+
+            print(
+                f"✅ [GitHub Discovery] Found {len(repositories)} repositories."
+            )
+
+            return repositories
+
+        except Exception as e:
+            print(f"🚨 [GitHub Discovery Error]: {e}")
             return []
-            
-        data = response.json()
-        raw_repos = data.get("repositories", [])
-        
-        clean_repos = []
-        for repo in raw_repos:
-            repo_info = {
-                "id": repo["id"],
-                "name": repo["name"],
-                "full_name": repo["full_name"],
-                "private": repo["private"],
-                "default_branch": repo["default_branch"],
-                "language": repo["language"],
-                "open_issues_count": repo["open_issues_count"]
-            }
-            clean_repos.append(repo_info)
-            print(f"   📦 Found Repo: {repo['full_name']} (Language: {repo['language']})")
-            
-        return clean_repos
