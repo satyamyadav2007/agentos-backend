@@ -1387,7 +1387,7 @@ async def sync_social_signals(background_tasks: BackgroundTasks):
         "status": "success", 
         "message": f"AgentOS is processing {len(raw_signals)} social signals in the background."
     }   
-=
+
 # ⚡ SPRINT 4: OUTBOUND ACTION ENGINE ROUTE
 # ==========================================
 @app.post("/api/execute-action")
