@@ -2084,7 +2084,7 @@ async def execute_mission_control_sync(workspace_id: str, user_email: str, reque
     }
 
     async def push_state():
-        await ws_manager.broadcast(json.dumps({"type": "UNIVERSAL_STATE_UPDATE", "data": engine_state}))
+        await ws_manager.broadcast(json.dumps({"type": "UNIVERSAL_STATE_UPDATE", "data": engine_state}, default=str))
 
     def add_log(source, msg):
         now = time.strftime("%H:%M:%S")

@@ -3,6 +3,7 @@ from integrations.base import BaseConnector
 from database.postgres_setup import SessionLocal
 from database.models import WorkspaceIntegration
 import traceback
+from .services.advanced_intelligence import JiraAdvancedIntelligence
 
 from .oauth import JiraAuthManager
 from .client import JiraClient
@@ -48,6 +49,7 @@ class JiraConnector(BaseConnector):
             self.jira_client = JiraClient(access_token=token, cloud_id=cloud_id)
             
             # 2. 🐘 Database Persistence (Mapping Jira data to your schema)
+            # ⚡ FIXED: Renamed integration to existing to match your if-condition
             existing = db.query(WorkspaceIntegration).filter(
                 WorkspaceIntegration.workspace_id == self.workspace_id,
                 WorkspaceIntegration.provider == "jira"
@@ -56,13 +58,15 @@ class JiraConnector(BaseConnector):
             if existing:
                 existing.installation_id = str(cloud_id) # Saving Jira Cloud ID
                 existing.account_name = site_url         # Saving Jira Site URL
+                existing.access_token = token            # ⚡ FIXED: Ensure token is saved
                 existing.is_active = True
             else:
                 new_integration = WorkspaceIntegration(
                     workspace_id=self.workspace_id,
                     provider="jira",
                     installation_id=str(cloud_id),
-                    account_name=site_url
+                    account_name=site_url,
+                    access_token=token                   # ⚡ FIXED: Ensure token is saved
                 )
                 db.add(new_integration)
             
@@ -93,19 +97,20 @@ class JiraConnector(BaseConnector):
         try:
             # 1. Fetch Cloud ID from DB for background syncs (When UI isn't actively connecting)
             if not self.cloud_id or not self.access_token:
-                integration = db.query(WorkspaceIntegration).filter(
+                # ⚡ FIXED: Renamed integration to existing to keep consistency
+                existing = db.query(WorkspaceIntegration).filter(
                     WorkspaceIntegration.workspace_id == self.workspace_id,
                     WorkspaceIntegration.provider == "jira"
                 ).first()
 
-                if not integration or not integration.installation_id:
+                if not existing or not existing.installation_id:
                     return self._get_error_contract("No Jira integration found in Postgres DB.")
 
-                self.cloud_id = integration.installation_id
-                self.site_url = integration.account_name
+                self.cloud_id = existing.installation_id
+                self.site_url = existing.account_name
+                # Safely attempt to fetch token if it exists in schema
+                self.access_token = getattr(existing, 'access_token', None) 
                 
-                # NOTE: For future background cron jobs, refresh token logic goes here.
-                # Assuming access_token is temporarily available via auth manager for MVP
                 if not self.access_token:
                      return self._get_error_contract("Access token missing. Re-authentication required.")
                      
@@ -118,10 +123,14 @@ class JiraConnector(BaseConnector):
             normalized_events = await sync_service.run_full_sync()
 
             # 3. Calculate Meticulous Metrics for the Dashboard
-            project_count = len(set(e.get("metadata", {}).get("project_key") for e in normalized_events if "metadata" in e))
+            # ⚡ FIXED: JiraNormalizer saves project_key in 'repository', not in 'metadata'
+            project_count = len(set(e.get("repository") for e in normalized_events if e.get("repository")))
             issue_count = len([e for e in normalized_events if e.get("entity_type") == "issue"])
             epic_count = len([e for e in normalized_events if e.get("entity_type") == "epic"])
             sprint_count = len([e for e in normalized_events if e.get("entity_type") == "sprint"])
+            issues_only = [e for e in normalized_events if e.get("entity_type") in ["issue", "bug", "task", "story"]]
+
+            advanced_insights = JiraAdvancedIntelligence.run_intelligence_suite(issues_only)
 
             print(f"✅ [Jira Connector] Processed {issue_count} issues, {epic_count} epics, {sprint_count} sprints from {project_count} projects.")
 
@@ -134,11 +143,12 @@ class JiraConnector(BaseConnector):
                     "sprints": sprint_count,
                     "issues": issue_count
                 },
+                "advanced_intelligence": advanced_insights, # ⚡ NAYA DATA
                 "records": normalized_events,
                 "events_processed": len(normalized_events),
                 "sync_status": "completed"
             }
-
+            
         except Exception as e:
             print(f"🚨 [Jira Sync Error]: {e}")
             traceback.print_exc()
