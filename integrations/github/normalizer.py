@@ -18,7 +18,7 @@ class GitHubNormalizer:
             severity = "Low"
 
         return {
-            "id": str(raw_issue.get("id", raw_issue.get("number"))),
+            "id": str(issue_data.get("id", issue_data.get("number", "unknown"))),
             "source": "github",
             "entity_type": "issue",
             "repository": repo_name,
@@ -40,7 +40,8 @@ class GitHubNormalizer:
     def normalize_pr(pr_data: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
         """Normalizes a GitHub Pull Request."""
         return {
-            "id": str(raw_issue.get("id", raw_issue.get("number"))),
+            # ⚡ FIXED: Changed issue_data to pr_data
+            "id": str(pr_data.get("id", pr_data.get("number", "unknown"))),
             "source": "github",
             "entity_type": "pull_request",
             "repository": repo_name,
@@ -55,11 +56,12 @@ class GitHubNormalizer:
                 "state": pr_data.get("state"),
                 "merged": pr_data.get("merged", False),
                 "branch": pr_data.get("head", {}).get("ref", "unknown"),
-                "created_at": pr_data.get("created_at"), # ⚡ Zaroori
+                "created_at": pr_data.get("created_at"), 
                 "merged_at": pr_data.get("merged_at")
             },
             "linked_entities": []
         }
+
     @staticmethod
     def normalize_commit(commit_model_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
         """Normalizes a GitHub Commit into a Universal Event."""
@@ -73,7 +75,8 @@ class GitHubNormalizer:
             severity = "High"
 
         return {
-            "id": str(raw_issue.get("id", raw_issue.get("number"))),
+            # ⚡ FIXED: Commits use 'sha', not id/number. Changed raw_issue to commit_model_dict
+            "id": str(commit_model_dict.get("sha", "unknown")),
             "source": "github",
             "entity_type": "commit",
             "repository": repo_name,
@@ -97,7 +100,8 @@ class GitHubNormalizer:
             severity = "High" # Failed builds are critical blockers
             
         return {
-            "id": str(raw_run.get("id")),
+            # ⚡ FIXED: Changed raw_run to action_dict
+            "id": str(action_dict.get("id", "unknown")),
             "source": "github",
             "entity_type": "ci_cd_run",
             "repository": repo_name,
@@ -111,6 +115,7 @@ class GitHubNormalizer:
                 "status": action_dict.get("status")
             }
         } 
+
     @staticmethod
     def normalize_release(release_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
         """Normalizes a GitHub Release into a Universal Event."""
@@ -127,12 +132,13 @@ class GitHubNormalizer:
             title_name = release_dict.get('tag_name', 'Unknown Version')
 
         return {
-            "id": str(raw_release.get("id")),
+            # ⚡ FIXED: Changed raw_release to release_dict
+            "id": str(release_dict.get("id", "unknown")),
             "source": "github",
             "entity_type": "release",
             "repository": repo_name,
             "title": f"Release: {title_name}",
-            "description": release_dict.get("body", "No release notes provided.")[:1000],
+            "description": release_dict.get("body", "No release notes provided.")[:1000] if release_dict.get("body") else "No release notes provided.",
             "severity": severity,
             "author": release_dict.get("author", {}).get("login", "System"),
             "metadata_json": {
@@ -141,6 +147,7 @@ class GitHubNormalizer:
                 "url": release_dict.get("html_url")
             }
         } 
+
     @staticmethod
     def normalize_discussion(discussion_dict: Dict[str, Any], repo_name: str) -> Dict[str, Any]:
         """Normalizes a GitHub GraphQL Discussion into a Universal Event."""
@@ -153,9 +160,10 @@ class GitHubNormalizer:
             severity = "Medium"
             
         author_data = discussion_dict.get("author")
-        
         author_name = author_data.get("login") if author_data else "Unknown"
-        discussion_id = raw_discussion.get("id") or raw_discussion.get("number")
+        
+        # ⚡ FIXED: Changed raw_discussion to discussion_dict
+        discussion_id = discussion_dict.get("id") or discussion_dict.get("number", "unknown")
 
         return {
             "id": str(discussion_id),
@@ -163,7 +171,7 @@ class GitHubNormalizer:
             "entity_type": "discussion",
             "repository": repo_name,
             "title": f"[{category}] {discussion_dict.get('title', 'Untitled')}",
-            "description": discussion_dict.get("bodyText", "No content provided.")[:1000],
+            "description": discussion_dict.get("bodyText", "No content provided.")[:1000] if discussion_dict.get("bodyText") else "No content provided.",
             "severity": severity,
             "author": author_name,
             "metadata_json": {
@@ -172,5 +180,4 @@ class GitHubNormalizer:
                 "url": discussion_dict.get("url"),
                 "created_at": discussion_dict.get("createdAt")
             }
-        }          
-
+        }

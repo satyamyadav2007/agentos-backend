@@ -19,6 +19,7 @@ class JiraNormalizer:
         author = assignee.get("displayName") if assignee else "Unassigned"
 
         return {
+            "id": str(raw_issue.get("id", raw_issue.get("key"))),
             "source": "jira",
             "entity_type": issue_type, 
             "repository": raw_issue.get("key", "").split("-")[0],
@@ -40,6 +41,7 @@ class JiraNormalizer:
         """Converts a Jira Epic into the AgentOS UniversalEvent format."""
         fields = raw_epic.get("fields", {})
         return {
+            "id": str(raw_epic.get("id", raw_epic.get("key"))),
             "source": "jira",
             "entity_type": "epic",
             "repository": project_key,
@@ -60,6 +62,7 @@ class JiraNormalizer:
     def normalize_sprint(raw_sprint: Dict[str, Any], project_key: str) -> Dict[str, Any]:
         """Converts an Active Sprint into the AgentOS UniversalEvent format."""
         return {
+            "id": str(raw_sprint.get("id")),
             "source": "jira",
             "entity_type": "sprint",
             "repository": project_key,

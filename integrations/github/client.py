@@ -47,3 +47,15 @@ class GitHubClient:
         except Exception as e:
             print(f"🚨 [GitHub Client] Network Error connecting to {url}: {str(e)}")
             return [] # Failsafe return
+            
+    async def post(self, endpoint: str, json_data: dict = None) -> dict:
+        import httpx
+        url = endpoint if endpoint.startswith("http") else f"{self.base_url}/{endpoint}"
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=json_data)
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            print(f"🚨 [GitHub Client] POST Error: {e}")
+            return {}        
