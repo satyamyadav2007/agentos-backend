@@ -1987,7 +1987,7 @@ async def create_workspace(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="CRITICAL: Failed to save workspace in Postgres.")
-a)
+
 sync_jobs = {}
 
 
