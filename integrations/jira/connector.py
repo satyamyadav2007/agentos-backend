@@ -7,6 +7,7 @@ from .services.advanced_intelligence import JiraAdvancedIntelligence
 from .services.sprint_intelligence import JiraSprintIntelligence
 from .services.core_intelligence import JiraCoreIntelligence
 from .services.workflow_intelligence import JiraWorkflowIntelligence
+from .services.epic_intelligence import JiraEpicIntelligence
 
 from .oauth import JiraAuthManager
 from .client import JiraClient
@@ -126,15 +127,18 @@ class JiraConnector(BaseConnector):
             normalized_events = await sync_service.run_full_sync()
 
             # 3. Calculate Meticulous Metrics for the Dashboard
-            # ⚡ FIXED: JiraNormalizer saves project_key in 'repository', not in 'metadata'
             project_count = len(set(e.get("repository") for e in normalized_events if e.get("repository")))
             issue_count = len([e for e in normalized_events if e.get("entity_type") == "issue"])
             epic_count = len([e for e in normalized_events if e.get("entity_type") == "epic"])
             sprint_count = len([e for e in normalized_events if e.get("entity_type") == "sprint"])
+            
             issues_only = [e for e in normalized_events if e.get("entity_type") in ["issue", "bug", "task", "story"]]
             sprints_only = [e for e in normalized_events if e.get("entity_type") == "sprint"]
-            # Identify Epics
             epics_only = [e for e in normalized_events if e.get("entity_type") == "epic"]
+            
+            # 🔥 FIX: Re-ordered Intelligence execution to prevent NameErrors
+            advanced_insights = JiraAdvancedIntelligence.run_intelligence_suite(issues_only)
+            sprint_insights = JiraSprintIntelligence.run_sprint_suite(sprints_only, issues_only)
             epic_insights = JiraEpicIntelligence.analyze_epics(epics_only, issues_only)
             
             # 🔥 1. Analyze individual issues (Module 3)
@@ -144,14 +148,12 @@ class JiraConnector(BaseConnector):
             epic_summaries = JiraCoreIntelligence.summarize_epics(epics_only, issues_only)
             
             # 🔥 3. Predict Active Sprint Risk (Module 16)
-            # Assuming 'sprint_insights' from previous module gave us average_velocity
+            # Safe extraction after sprint_insights is actually defined
             avg_velocity = sprint_insights.get("velocity", {}).get("average_velocity_points", 20)
             risk_prediction = JiraCoreIntelligence.predict_sprint_risk(issues_only, avg_velocity)
+            
             workflow_analysis = JiraWorkflowIntelligence.analyze_workflow_bottlenecks(issues_only)
             engineering_bottlenecks = JiraWorkflowIntelligence.detect_engineering_bottlenecks(issues_only)
-
-            advanced_insights = JiraAdvancedIntelligence.run_intelligence_suite(issues_only)
-            sprint_insights = JiraSprintIntelligence.run_sprint_suite(sprints_only, issues_only)
 
             print(f"✅ [Jira Connector] Processed {issue_count} issues, {epic_count} epics, {sprint_count} sprints from {project_count} projects.")
 
@@ -167,12 +169,12 @@ class JiraConnector(BaseConnector):
                 "ai_analysis": {
                     "backlog_and_blockers": advanced_insights,
                     "sprint_and_velocity": sprint_insights,
-                    "issue_impact": issue_insights,       # ⚡ NEW
-                    "epic_intelligence": epic_summaries,  # ⚡ NEW
+                    "issue_impact": issue_insights,       
+                    "epic_intelligence": epic_insights,   # Replaced duplicate epic_summaries key
+                    "epic_summaries": epic_summaries,     
                     "risk_prediction": risk_prediction,
-                    "workflow_intelligence": workflow_analysis,        # ⚡ NEW
-                    "engineering_bottlenecks": engineering_bottlenecks,
-                    "epic_intelligence": epic_insights
+                    "workflow_intelligence": workflow_analysis,        
+                    "engineering_bottlenecks": engineering_bottlenecks
                 },
                 "records": normalized_events,
                 "events_processed": len(normalized_events),

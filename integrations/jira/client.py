@@ -9,11 +9,8 @@ class JiraClient:
     def __init__(self, access_token: str, cloud_id: str):
         self.access_token = access_token
         self.cloud_id = cloud_id
-        
-        # ⚡ FIX 1: Base URL ab sirf root tak hai. 
-        # Extractors ab explicitly path batayenge (e.g., 'rest/api/3/search' ya 'rest/agile/1.0/board')
         self.base_url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}"
-        self.timeout = httpx.Timeout(30.0) # Extended timeout for heavy Jira payloads
+        self.timeout = httpx.Timeout(30.0) 
 
     @property
     def _headers(self) -> Dict[str, str]:
@@ -24,21 +21,20 @@ class JiraClient:
         }
 
     async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], list]:
-        """Executes a GET request with graceful error handling."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url, headers=self._headers, params=params)
                 
-                # ⚡ FIX 2: Graceful Error Handling to save the pipeline
                 if response.status_code == 429:
                     print(f"⚠️ [Jira Client] Rate limit exceeded for {endpoint}! Bypassing...")
-                    return {} # Safely return empty instead of crashing
+                    return {} 
                 
-                if response.status_code in [400, 401, 403, 404]:
+                # ⚡ FIX: Added 410 to gracefully handle deprecated endpoints
+                if response.status_code in [400, 401, 403, 404, 410]:
                     print(f"⚠️ [Jira Client] Resource unavailable ({response.status_code}) for {endpoint}")
-                    return {} # Prevents crashes if a board lacks sprints/epics
+                    return {} 
 
                 response.raise_for_status()
                 return response.json()
@@ -48,16 +44,15 @@ class JiraClient:
             return {}
 
     async def post(self, endpoint: str, json_data: Dict[str, Any]) -> Union[Dict[str, Any], list]:
-        """Executes a POST request (mainly used for complex JQL searches)."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, headers=self._headers, json=json_data)
                 
-                if response.status_code in [400, 401, 403, 404]:
+                # ⚡ FIX: Added 410 to gracefully handle deprecated search endpoints
+                if response.status_code in [400, 401, 403, 404, 410]:
                     print(f"⚠️ [Jira Client] POST Failed ({response.status_code}): {endpoint}")
-                    # Usually invalid JQL or missing permissions
                     return {}
 
                 response.raise_for_status()
