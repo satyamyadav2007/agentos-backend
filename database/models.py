@@ -38,6 +38,7 @@ class WorkspaceIntegration(Base):
     provider = Column(String, index=True, nullable=False) # e.g., "github"
     installation_id = Column(String, nullable=True) 
     account_name = Column(String, nullable=True)
+    access_token = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
