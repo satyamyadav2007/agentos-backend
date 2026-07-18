@@ -21,7 +21,7 @@ export default function MissionControlSync() {
     isCoreComplete: false,
     apps: [] as {name: string, status: string, progress: number, items: string}[],
     agents: [] as {name: string, status: string}[], // ⚡ AGENTS AB SIRF YAHAN HAIN
-    metrics: { repos: 0, issues: 0, prs: 0, commits: 0 },
+    metrics: { repos: 0, projects: 0, epics: 0, sprints: 0, issues: 0, prs: 0, commits: 0 },
     dataQuality: { collected: 0, normalized: 0, embedded: 0, graphNodes: 0, relationships: 0 },
     earlyFindings: [] as {label: string, value: string}[],
     logs: [] as {time: string, source: string, msg: string}[]
@@ -51,7 +51,7 @@ export default function MissionControlSync() {
         
         const connectedTools = (statusData.connected_tools && statusData.connected_tools.length > 0) 
           ? statusData.connected_tools 
-          : ["github"];
+          : ["github", "jira"];
 
         const dynamicApps = connectedTools.map((toolName: string) => ({
           name: toolName.charAt(0).toUpperCase() + toolName.slice(1),

@@ -5,6 +5,8 @@ from database.models import WorkspaceIntegration
 import traceback
 from .services.advanced_intelligence import JiraAdvancedIntelligence
 from .services.sprint_intelligence import JiraSprintIntelligence
+from .services.core_intelligence import JiraCoreIntelligence
+from .services.workflow_intelligence import JiraWorkflowIntelligence
 
 from .oauth import JiraAuthManager
 from .client import JiraClient
@@ -131,6 +133,22 @@ class JiraConnector(BaseConnector):
             sprint_count = len([e for e in normalized_events if e.get("entity_type") == "sprint"])
             issues_only = [e for e in normalized_events if e.get("entity_type") in ["issue", "bug", "task", "story"]]
             sprints_only = [e for e in normalized_events if e.get("entity_type") == "sprint"]
+            # Identify Epics
+            epics_only = [e for e in normalized_events if e.get("entity_type") == "epic"]
+            epic_insights = JiraEpicIntelligence.analyze_epics(epics_only, issues_only)
+            
+            # 🔥 1. Analyze individual issues (Module 3)
+            issue_insights = [JiraCoreIntelligence.analyze_issue_intelligence(issue) for issue in issues_only]
+            
+            # 🔥 2. Summarize Epics (Module 6)
+            epic_summaries = JiraCoreIntelligence.summarize_epics(epics_only, issues_only)
+            
+            # 🔥 3. Predict Active Sprint Risk (Module 16)
+            # Assuming 'sprint_insights' from previous module gave us average_velocity
+            avg_velocity = sprint_insights.get("velocity", {}).get("average_velocity_points", 20)
+            risk_prediction = JiraCoreIntelligence.predict_sprint_risk(issues_only, avg_velocity)
+            workflow_analysis = JiraWorkflowIntelligence.analyze_workflow_bottlenecks(issues_only)
+            engineering_bottlenecks = JiraWorkflowIntelligence.detect_engineering_bottlenecks(issues_only)
 
             advanced_insights = JiraAdvancedIntelligence.run_intelligence_suite(issues_only)
             sprint_insights = JiraSprintIntelligence.run_sprint_suite(sprints_only, issues_only)
@@ -148,7 +166,13 @@ class JiraConnector(BaseConnector):
                 },
                 "ai_analysis": {
                     "backlog_and_blockers": advanced_insights,
-                    "sprint_and_velocity": sprint_insights
+                    "sprint_and_velocity": sprint_insights,
+                    "issue_impact": issue_insights,       # ⚡ NEW
+                    "epic_intelligence": epic_summaries,  # ⚡ NEW
+                    "risk_prediction": risk_prediction,
+                    "workflow_intelligence": workflow_analysis,        # ⚡ NEW
+                    "engineering_bottlenecks": engineering_bottlenecks,
+                    "epic_intelligence": epic_insights
                 },
                 "records": normalized_events,
                 "events_processed": len(normalized_events),

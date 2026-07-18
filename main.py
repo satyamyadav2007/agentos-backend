@@ -20,6 +20,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+from fastapi import APIRouter, Depends, HTTPException
+from integrations.jira.services.auto_prd_service import AutoPRDToJiraOrchestrator
+from database.postgres_setup import SessionLocal
+from database.models import WorkspaceIntegration
 
 # Groq Client Initialization
 from groq import AsyncGroq
@@ -35,15 +39,17 @@ from core.event_bus import event_bus
 
 # Agents & Engines
 from agents.jira_agent import create_jira_ticket
-from agents.chat_agent import ask_executive_cpo
+
 from agents.support_agent import translate_customer_ticket
 from agents.normalizer_agent import normalize_universal_signal
 from agents.agents_role import get_cpo_persona
 from agents.theme_agent import ThemeAgent
 from agents.revenue_agent import revenue_agent
 from agents.recommendation_agent import recommendation_engine
-from agents.root_cause_agent import root_cause_engine
+
 from agents.prd_agent import prd_engine
+from agents.universal_executive_chat import universal_executive_chat
+from agents.killer_feature_loop import killer_loop_engine
 
 from adapters.webhook_router import identify_signal_source, normalize_pusher_payload
 from adapters.scraper_engine import scraper, wild_west_engine
@@ -52,6 +58,7 @@ from adapters.crm_aggregator import crm_engine
 from adapters.apify_engine import apify_connector
 from adapters.log_engine import parse_engineering_logs
 from adapters.nango_engine import nango_connector
+
 
 from integrations.manager import integration_manager
 from integrations.github.webhook import github_webhook_handler
@@ -63,6 +70,7 @@ from integrations.hubspot.webhook import hubspot_webhook_handler
 from integrations.intercom.webhook import intercom_webhook_handler
 from integrations.discord.webhook import discord_webhook_handler
 from integrations.zoom.webhook import zoom_webhook_handler
+from integrations.jira.services.auto_prd_service import AutoPRDToJiraOrchestrator
 
 from services.velocity_engine import velocity_analytics
 from services.tech_debt_engine import tech_debt_engine
@@ -703,8 +711,47 @@ async def jira_live_webhook(request: Request):
         
     except Exception as e:
         print(f"🚨 [Jira Webhook Error]: {e}")
-        return {"status": "error", "message": str(e)}                        
-# main.py ke andar
+        return {"status": "error", "message": str(e)} 
+
+@app.post("/api/integrations/jira/auto-prd")
+async def trigger_auto_prd(request: Request):
+    """Triggers Module 11: AI creates PRD, Epic, Story, and Tasks."""
+    payload = await request.json()
+    workspace_id = payload.get("workspace_id")
+    
+    db = SessionLocal()
+    try:
+        integration = db.query(WorkspaceIntegration).filter(
+            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.provider == "jira"
+        ).first()
+
+        if not integration or not integration.access_token:
+            raise HTTPException(status_code=400, detail="Jira not connected")
+
+        domain = integration.account_name.replace(".atlassian.net", "").replace("https://", "")
+        
+        orchestrator = AutoPRDToJiraOrchestrator(
+            domain=domain, 
+            email=payload.get("user_email"), 
+            token=integration.access_token, 
+            project_key=payload.get("project_key", "ENG")
+        )
+
+        result = await orchestrator.execute_autonomous_pipeline(
+            title=payload.get("title", "AI Generated Feature"),
+            feedback_text=payload.get("feedback_text", ""),
+            theme_data=payload.get("theme_data", {}),
+            revenue_risk=payload.get("revenue_risk", 0)
+        )
+        return result
+
+    except Exception as e:
+        print(f"🚨 [Auto PRD Error]: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
 
 
 # 💬 SLACK OAUTH ROUTE
@@ -1149,19 +1196,22 @@ async def connect_knowledge(payload: KnowledgeConnectPayload):
 
 
 
-@app.post("/api/chat")
-async def executive_chat(payload: ChatPayload):
+@app.post("/api/chat/executive")
+async def chat_with_cpo(request: Request):
     try:
-        result = await ask_executive_cpo(
-            user_message=payload.message,
-            dashboard_context=payload.context_data
+        payload = await request.json()
+        user_message = payload.get("message", "")
+        dashboard_context = payload.get("dashboard_context", []) 
+        
+        # Hands off to the fused universal agent
+        result = await universal_executive_chat.analyze_and_chat(
+            user_message=user_message, 
+            dashboard_context=dashboard_context
         )
         return result
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
+        print(f"🚨 [Chat Route Error]: {e}")
+        return {"status": "error", "message": str(e)}
 # ==========================================
 # 🔍 SPRINT 4: AI ROOT CAUSE ENDPOINT (Module 10)
 # ==========================================

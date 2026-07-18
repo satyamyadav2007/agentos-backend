@@ -2,6 +2,7 @@ import os
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 async def call_cloud_llm(prompt: str, system_prompt: str = "You are an expert AI CPO for AgentOS.") -> str:

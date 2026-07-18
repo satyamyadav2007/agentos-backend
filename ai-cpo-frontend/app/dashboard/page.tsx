@@ -1530,10 +1530,9 @@ export default function AICommandCenter() {
           </div>
         </div>
       )}
-        </div>
-
       </div>
     </div>
+  </div>
   </div>
   );
 }
