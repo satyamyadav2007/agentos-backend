@@ -29,6 +29,17 @@ class Neo4jConnection:
 
     def close(self):
         self.driver.close()
+        
+    def process_events_for_graph(self, events):
+        valid_events = []
+        for event in events:
+            # 👇 SAFETY CHECK: Ignore events without a valid ID 👇
+            event_id = event.get("id") or getattr(event, "id", None)
+            if not event_id or event_id == "unknown":
+                print(f"⚠️ [GraphDB] Skipping event with null/unknown ID: {event.get('title')}")
+                continue
+                
+            valid_events.append(event)
 
     async def build_knowledge_graph(self, workspace_id: str, records: List[Dict[str, Any]]):
         """

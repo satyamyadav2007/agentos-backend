@@ -283,6 +283,7 @@ class UniversalEvent(BaseModel):
     severity: str
     sentiment: str
     url: str = ""
+    engagement_score: float = 0.0
 
 # Integration Payloads
 class JiraConnectPayload(BaseModel):

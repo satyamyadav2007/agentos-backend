@@ -15,7 +15,7 @@ class UniversalEvent(BaseModel):
     timestamp: datetime
     
     revenue_risk: Optional[float] = 0.0
-    engagement_score: Optional[int] = 0
+    engagement_score: float = 0.0
     
     metadata: Dict[str, Any] = {}
     linked_entities: List[str] = []
