@@ -4,6 +4,7 @@ from database.postgres_setup import SessionLocal
 from database.models import WorkspaceIntegration
 import traceback
 from .services.advanced_intelligence import JiraAdvancedIntelligence
+from .services.sprint_intelligence import JiraSprintIntelligence
 
 from .oauth import JiraAuthManager
 from .client import JiraClient
@@ -129,8 +130,10 @@ class JiraConnector(BaseConnector):
             epic_count = len([e for e in normalized_events if e.get("entity_type") == "epic"])
             sprint_count = len([e for e in normalized_events if e.get("entity_type") == "sprint"])
             issues_only = [e for e in normalized_events if e.get("entity_type") in ["issue", "bug", "task", "story"]]
+            sprints_only = [e for e in normalized_events if e.get("entity_type") == "sprint"]
 
             advanced_insights = JiraAdvancedIntelligence.run_intelligence_suite(issues_only)
+            sprint_insights = JiraSprintIntelligence.run_sprint_suite(sprints_only, issues_only)
 
             print(f"✅ [Jira Connector] Processed {issue_count} issues, {epic_count} epics, {sprint_count} sprints from {project_count} projects.")
 
@@ -143,12 +146,15 @@ class JiraConnector(BaseConnector):
                     "sprints": sprint_count,
                     "issues": issue_count
                 },
-                "advanced_intelligence": advanced_insights, # ⚡ NAYA DATA
+                "ai_analysis": {
+                    "backlog_and_blockers": advanced_insights,
+                    "sprint_and_velocity": sprint_insights
+                },
                 "records": normalized_events,
                 "events_processed": len(normalized_events),
                 "sync_status": "completed"
             }
-            
+
         except Exception as e:
             print(f"🚨 [Jira Sync Error]: {e}")
             traceback.print_exc()

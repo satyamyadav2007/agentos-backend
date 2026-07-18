@@ -27,6 +27,7 @@ class GitHubNormalizer:
             "author": issue_data.get("user", {}).get("login", "Unknown"),
             "severity": severity,
             "timestamp": issue_data.get("created_at"),
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata": {
                 "github_id": issue_data.get("id"),
                 "number": issue_data.get("number"),
@@ -50,6 +51,7 @@ class GitHubNormalizer:
             "author": pr_data.get("user", {}).get("login", "Unknown"),
             "severity": "Medium", # PRs usually have Medium risk until analyzed
             "timestamp": pr_data.get("created_at"),
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata": {
                 "github_id": pr_data.get("id"),
                 "number": pr_data.get("number"),
@@ -84,6 +86,7 @@ class GitHubNormalizer:
             "description": message,
             "severity": severity,
             "author": author_name,
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata_json": {
                 "sha": commit_model_dict.get("sha"),
                 "url": commit_model_dict.get("html_url")
@@ -109,6 +112,7 @@ class GitHubNormalizer:
             "description": f"Triggered by {action_dict.get('event')} on branch {action_dict.get('head_branch')}",
             "severity": severity,
             "author": action_dict.get("actor", {}).get("login", "System"),
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata_json": {
                 "run_id": action_dict.get("id"),
                 "html_url": action_dict.get("html_url"),
@@ -141,6 +145,7 @@ class GitHubNormalizer:
             "description": release_dict.get("body", "No release notes provided.")[:1000] if release_dict.get("body") else "No release notes provided.",
             "severity": severity,
             "author": release_dict.get("author", {}).get("login", "System"),
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata_json": {
                 "tag_name": release_dict.get("tag_name"),
                 "is_production": not is_draft and not is_prerelease,
@@ -174,6 +179,7 @@ class GitHubNormalizer:
             "description": discussion_dict.get("bodyText", "No content provided.")[:1000] if discussion_dict.get("bodyText") else "No content provided.",
             "severity": severity,
             "author": author_name,
+            "engagement_score": 0.0,  # ⚡ FIXED: Added for Event Bus compatibility
             "metadata_json": {
                 "github_id": discussion_dict.get("id"),
                 "category": category,
