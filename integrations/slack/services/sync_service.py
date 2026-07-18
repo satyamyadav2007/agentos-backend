@@ -1,58 +1,63 @@
 from typing import Dict, Any, List
 from integrations.slack.normalizer import SlackNormalizer
 from integrations.slack.discovery import SlackDiscovery
-from integrations.slack.extractors.messages import SlackMessageExtractor
 
 class SlackSyncService:
-    """Orchestrates Slack Discovery (Mod 2) and Conversation Intelligence (Mod 3)."""
-    
     def __init__(self, client):
         self.client = client
         self.discovery = SlackDiscovery(client)
-        self.message_extractor = SlackMessageExtractor(client)
         
     async def run_full_sync(self) -> List[Dict[str, Any]]:
         print("\n🚀 [Slack Sync Service] Starting Enterprise Workspace Sync...")
         
-        # MODULE 2: Workspace Discovery
+        # 1. Module 2: Workspace Discovery
         channels = await self.discovery.fetch_channels()
-        user_map = await self.discovery.fetch_users()
-        
+        if not channels:
+            print("⚠️ [Slack Sync] No channels found.")
+            return []
+            
         all_normalized_events = []
         
-        # MODULE 3: Conversation Intelligence
-        for channel in channels:
+        # Target important channels first to avoid API spam (e.g., #engineering, #alerts, #general)
+        target_channels = [c for c in channels if any(k in c['name'].lower() for k in ['eng', 'dev', 'alert', 'support', 'general', 'product'])]
+        if not target_channels:
+            target_channels = channels[:5] # Fallback to top 5 if naming convention doesn't match
+            
+        # 2. Module 3, 4, 12: Deep Extraction & Thread Intelligence
+        for channel in target_channels:
             chan_id = channel["id"]
             chan_name = channel["name"]
             
-            # 1. Fetch raw messages
-            raw_messages = await self.message_extractor.fetch_channel_history(chan_id, limit=30)
+            print(f"💬 [Slack Sync] Extracting intelligence from #{chan_name}...")
             
-            # 2. Add real human names instead of IDs
-            enriched_messages = self.message_extractor.enrich_messages_with_users(raw_messages, user_map)
-            
-            incident_svc = SlackIncidentService(self.client)
-            convo_svc = SlackConversationService(self.client)
-
-            # Specific channel ID milne ke baad call mar lo
-            incidents = await incident_svc.detect_active_incidents(chan_id, chan_name)
-            # 3. Handle Threads & Normalize
-            for msg in enriched_messages:
-                # If message is the start of a thread, fetch the whole thread
-                thread_ts = msg.get("thread_ts")
-                full_text = msg.get("text", "")
+            try:
+                # Fetch recent messages
+                history_res = await self.client.get("conversations.history", params={"channel": chan_id, "limit": 50})
+                messages = history_res.get("messages", [])
                 
-                if thread_ts and thread_ts == msg.get("ts"):
-                    replies = await self.message_extractor.fetch_thread_replies(chan_id, thread_ts)
-                    # Combine thread text for the AI context (Module 11/12 Prep)
-                    reply_texts = [r.get("text", "") for r in replies if r.get("ts") != thread_ts]
-                    if reply_texts:
-                        full_text += "\n\n--- Thread Replies ---\n" + "\n".join(reply_texts)
-                        msg["text"] = full_text # Overwrite with full context
+                for msg in messages:
+                    # Ignore bot messages or empty system messages
+                    if msg.get("type") == "message" and not msg.get("bot_id"):
+                        normalized = SlackNormalizer.normalize_message(msg, chan_name)
+                        
+                        # 🧵 Module 12: Thread Intelligence
+                        # If this message is tagged as an Incident or Decision, AND it has replies, fetch the thread!
+                        thread_ts = msg.get("thread_ts")
+                        reply_count = int(msg.get("reply_count", 0))
+                        
+                        if thread_ts and reply_count > 0 and (normalized["entity_type"] == "incident" or normalized["metadata"]["contains_decision"]):
+                            thread_res = await self.client.get("conversations.replies", params={"channel": chan_id, "ts": thread_ts, "limit": 20})
+                            replies = thread_res.get("messages", [])
+                            
+                            # Append thread context directly to the description for the AI Brain
+                            thread_text = "\n".join([f"- {r.get('text')}" for r in replies[1:] if r.get('type') == 'message'])
+                            if thread_text:
+                                normalized["description"] += f"\n\n--- Thread Context ---\n{thread_text}"
+                                
+                        all_normalized_events.append(normalized)
+                        
+            except Exception as e:
+                print(f"🚨 [Slack Sync Error] Failed extracting channel {chan_name}: {e}")
                 
-                # Normalize to UniversalEvent
-                normalized = SlackNormalizer.normalize_message(msg, chan_name)
-                all_normalized_events.append(normalized)
-                    
-        print(f"🧠 [AgentOS Brain] Normalized {len(all_normalized_events)} total rich events from Slack!")
+        print(f"🧠 [AgentOS Brain] Normalized {len(all_normalized_events)} high-value events from Slack!")
         return all_normalized_events

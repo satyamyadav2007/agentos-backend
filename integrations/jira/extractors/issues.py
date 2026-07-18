@@ -8,30 +8,25 @@ class JiraIssuesExtractor:
         """Fetches issues for a specific Jira project using the standard v3 API."""
         print(f"🐛 [Jira Extractor] Fetching issues for Project: {project_key}...")
         
-        # JQL to get all issues for the project (max 100 for now to avoid overload)
+        # ⚡ FIX: Added standard JQL for issues
         jql_query = f'project="{project_key}" ORDER BY created DESC'
-        payload = {
+        
+        # ⚡ FIX: Merged all fields into a single comma-separated string required by the API
+        params = {
             "jql": jql_query,
             "maxResults": 100,
-            "fields": [
-                "summary", "description", "issuetype", "status", 
-                "priority", "assignee", "creator", "created"
-            ]
+            "fields": "summary,description,issuetype,status,priority,assignee,creator,created,updated"
         }
         
+        print(f"🔍 [Debug] Issues Endpoint URL: rest/api/3/search")
+        print(f"🔍 [Debug] Issues Params: {params}")
+        
         try:
-            # ⚡ FIX: Explicitly passing the standard REST v3 path
-            response = await self.client.get(
-                    "rest/api/3/search", 
-                    params={
-                        "jql": f"project='{project_key}'",
-                        "maxResults": 100,
-                        "fields": "summary,status,issuetype,priority,created,updated" # Apne hisaab se fields add kar lo
-                    }
-            )
+            response = await self.client.get("rest/api/3/search", params=params)
             
-            # Since client now returns {} on failure, we safely .get()
-            issues = response.get("issues", [])
+            # Safe extraction assuming client returns {} on error
+            issues = response.get("issues", []) if response else []
+            
             print(f"   ✅ Extracted {len(issues)} issues from {project_key}")
             return issues
             

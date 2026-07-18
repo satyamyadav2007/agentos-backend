@@ -53,11 +53,17 @@ class JiraAuthManager:
         if not resources:
             raise Exception("No Jira workspaces found for this token.")
             
-        # For MVP, grab the first authorized Jira site
-        primary_site = resources[0]
-        cloud_id = primary_site["id"]
-        site_url = primary_site["url"]
+        # ⚡ FIX: Filter explicitly for Jira resource instead of blindly taking index 0
+        jira_resource = next((r for r in resources if "jira" in r.get("scopes", []) or r.get("avatarUrl")), None)
         
-        print(f"✅ [Jira Auth] Connected to Jira site: {site_url}")
+        if not jira_resource:
+            # Fallback in case specific markers aren't present
+            jira_resource = resources[0]
+            
+        cloud_id = jira_resource["id"]
+        site_url = jira_resource["url"]
+        site_name = jira_resource.get("name", site_url)
+        
+        print(f"✅ [Jira Auth] Cloud ID verified: {cloud_id} for site: {site_name}")
         
         return token, cloud_id, site_url
