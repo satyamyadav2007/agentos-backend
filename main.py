@@ -777,12 +777,12 @@ async def connect_slack(payload: SlackConnectPayload):
 # 🕸️ SLACK LIVE WEBHOOK ROUTE
 # ==========================================
 @app.post("/api/integrations/slack/webhook")
-async def slack_live_webhook(request: Request):
+async def slack_live_webhook(request: Request, background_tasks: BackgroundTasks): # ⚡ FIX: background_tasks add kiya
     try:
         payload = await request.json()
         
-        # Pass the payload to our dedicated webhook handler
-        result = await slack_webhook_handler.handle_event(payload)
+        # ⚡ FIX: background_tasks ko handler mein pass kar diya
+        result = await slack_webhook_handler.handle_event(payload, background_tasks)
         
         # Slack requires the 'challenge' string returned directly during setup
         if "challenge" in result:
@@ -791,8 +791,7 @@ async def slack_live_webhook(request: Request):
         return result
     except Exception as e:
         print(f"🚨 [Slack Webhook Error]: {e}")
-        return {"status": "error", "message": str(e)} 
-
+        return {"status": "error", "message": str(e)}
 
 # ==========================================
 # 🎫 ZENDESK OAUTH ROUTE

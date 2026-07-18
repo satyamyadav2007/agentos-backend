@@ -21,7 +21,14 @@ class JiraIssuesExtractor:
         
         try:
             # ⚡ FIX: Explicitly passing the standard REST v3 path
-            response = await self.client.post("rest/api/3/search", json_data=payload)
+            response = await self.client.get(
+                    "rest/api/3/search", 
+                    params={
+                        "jql": f"project='{project_key}'",
+                        "maxResults": 100,
+                        "fields": "summary,status,issuetype,priority,created,updated" # Apne hisaab se fields add kar lo
+                    }
+            )
             
             # Since client now returns {} on failure, we safely .get()
             issues = response.get("issues", [])
