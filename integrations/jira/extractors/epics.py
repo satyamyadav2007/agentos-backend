@@ -4,13 +4,11 @@ class JiraEpicsExtractor:
     def __init__(self, client):
         self.client = client
 
-   async def fetch_project_epics(self, project_key: str) -> list:
+    async def fetch_project_epics(self, project_key: str) -> list:
         print(f"🏔️ [Jira Extractor] Fetching Epics for Project: {project_key}...")
         
         jql_query = f'project="{project_key}" AND issuetype=Epic ORDER BY created DESC'
         
-        # ⚡ FIX: Use 'params' instead of JSON payload for a GET request
-        # ⚡ FIX: Ensure fields is a comma-separated string, not an array
         params = {
             "jql": jql_query,
             "maxResults": 50,
@@ -18,7 +16,6 @@ class JiraEpicsExtractor:
         }
         
         try:
-            # ⚡ FIX: Changed self.client.post to self.client.get
             response = await self.client.get("rest/api/3/search", params=params)
             
             epics = response.get("issues", []) if response else []
