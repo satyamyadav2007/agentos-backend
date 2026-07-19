@@ -4,32 +4,24 @@ class JiraEpicsExtractor:
     def __init__(self, client):
         self.client = client
 
-    async def fetch_project_epics(self, project_key: str) -> List[Dict[str, Any]]:
-        """Fetches all Epics for a specific project to map strategic initiatives."""
+   async def fetch_project_epics(self, project_key: str) -> list:
         print(f"🏔️ [Jira Extractor] Fetching Epics for Project: {project_key}...")
         
-        # JQL with issuetype=Epic
         jql_query = f'project="{project_key}" AND issuetype=Epic ORDER BY created DESC'
         
-        # ⚡ FIX: Use JSON payload array format for POST request
-        payload = {
+        # ⚡ FIX: Use 'params' instead of JSON payload for a GET request
+        # ⚡ FIX: Ensure fields is a comma-separated string, not an array
+        params = {
             "jql": jql_query,
             "maxResults": 50,
-            "fields": [
-                "summary", "description", "status", "priority", 
-                "assignee", "created", "updated"
-            ]
+            "fields": "summary,description,status,priority,assignee,created,updated" 
         }
         
-        print(f"🔍 [Debug] Epics Endpoint URL: POST rest/api/3/search")
-        
         try:
-            # ⚡ FIX: Using self.client.post and passing json_data
-            response = await self.client.post("rest/api/3/search", json_data=payload)
+            # ⚡ FIX: Changed self.client.post to self.client.get
+            response = await self.client.get("rest/api/3/search", params=params)
             
-            # Safe extraction
             epics = response.get("issues", []) if response else []
-            
             print(f"   ✅ Extracted {len(epics)} Epics from {project_key}")
             return epics
             

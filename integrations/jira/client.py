@@ -24,6 +24,10 @@ class JiraClient:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         print(f"🔗 [Client Debug] Exact URL Executed: {url}")
         
+        # ⚡ OPTIONAL BUT HELPFUL: Print params so you know exactly what JQL is sent
+        if params:
+            print(f"🔍 [Client Debug] Query Params: {params}")
+        
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url, headers=self._headers, params=params)
@@ -32,9 +36,10 @@ class JiraClient:
                     print(f"⚠️ [Jira Client] Rate limit exceeded for {endpoint}! Bypassing...")
                     return {} 
                 
-                # ⚡ FIX: Added 410 to gracefully handle deprecated endpoints
-                if response.status_code in [400, 401, 403, 404, 410]:
+                # ⚡ FIX: Catch ALL 400+ errors and print EXACTLY what Atlassian is complaining about
+                if response.status_code >= 400:
                     print(f"⚠️ [Jira Client] Resource unavailable ({response.status_code}) for {endpoint}")
+                    print(f"🚨 [Jira Response Body]: {response.text}")
                     return {} 
 
                 response.raise_for_status()
@@ -52,9 +57,14 @@ class JiraClient:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, headers=self._headers, json=json_data)
                 
-                # ⚡ FIX: Added 410 to gracefully handle deprecated search endpoints
-                if response.status_code in [400, 401, 403, 404, 410]:
+                if response.status_code == 429:
+                    print(f"⚠️ [Jira Client] Rate limit exceeded for {endpoint}! Bypassing...")
+                    return {}
+
+                # ⚡ FIX: Catch ALL 400+ errors and print EXACTLY what Atlassian is complaining about
+                if response.status_code >= 400:
                     print(f"⚠️ [Jira Client] POST Failed ({response.status_code}): {endpoint}")
+                    print(f"🚨 [Jira Response Body]: {response.text}")
                     return {}
 
                 response.raise_for_status()
