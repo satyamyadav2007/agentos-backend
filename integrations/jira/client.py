@@ -22,6 +22,7 @@ class JiraClient:
 
     async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], list]:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        print(f"🔗 [Client Debug] Exact URL Executed: {url}")
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -45,6 +46,7 @@ class JiraClient:
 
     async def post(self, endpoint: str, json_data: Dict[str, Any]) -> Union[Dict[str, Any], list]:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        print(f"🔗 [Client Debug] Exact URL Executed: {url}")
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

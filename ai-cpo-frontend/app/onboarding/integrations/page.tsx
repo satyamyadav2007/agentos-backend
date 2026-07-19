@@ -159,7 +159,7 @@ function IntegrationsContent() {
     
     if (toolName === "Jira") {
       const clientId = "zjaxoFFVOp1dhVrcWsoKqqrAfnMADIfq"; 
-      const jiraAuthUrl = `https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=${clientId}&scope=read%3Ajira-work%20write%3Ajira-work%20read%3Ajira-user&redirect_uri=${redirectUri}&state=jira_auth&response_type=code&prompt=consent`;
+      const jiraAuthUrl = `https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=zjaxoFFVOp1dhVrcWsoKqqrAfnMADIfq&scope=read%3Ajira-work%20write%3Ajira-work%20read%3Ajira-user%20read%3Aboard-scope%3Ajira-software%20read%3Asprint%3Ajira-software%20offline_access&redirect_uri=https%3A%2F%2Fagentos-frontend-azure.vercel.app%2Fonboarding%2Fintegrations&state=${YOUR_USER_BOUND_VALUE}&response_type=code&prompt=consent`;
       window.location.href = jiraAuthUrl;
       return;
     } 

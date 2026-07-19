@@ -8,23 +8,26 @@ class JiraEpicsExtractor:
         """Fetches all Epics for a specific project to map strategic initiatives."""
         print(f"🏔️ [Jira Extractor] Fetching Epics for Project: {project_key}...")
         
-        # ⚡ FIX: Added issuetype=Epic and ORDER BY created DESC
+        # JQL with issuetype=Epic
         jql_query = f'project="{project_key}" AND issuetype=Epic ORDER BY created DESC'
         
-        # ⚡ FIX: Cleaned up dead payload variable and mapped directly to params
-        params = {
+        # ⚡ FIX: Use JSON payload array format for POST request
+        payload = {
             "jql": jql_query,
-            "maxResults": 50, # Epics are usually fewer than standard issues
-            "fields": "summary,description,status,priority,assignee,created,updated"
+            "maxResults": 50,
+            "fields": [
+                "summary", "description", "status", "priority", 
+                "assignee", "created", "updated"
+            ]
         }
         
-        print(f"🔍 [Debug] Epics Endpoint URL: rest/api/3/search")
-        print(f"🔍 [Debug] Epics Params: {params}")
+        print(f"🔍 [Debug] Epics Endpoint URL: POST rest/api/3/search")
         
         try:
-            response = await self.client.get("rest/api/3/search", params=params)
+            # ⚡ FIX: Using self.client.post and passing json_data
+            response = await self.client.post("rest/api/3/search", json_data=payload)
             
-            # Safe extraction assuming client returns {} on error
+            # Safe extraction
             epics = response.get("issues", []) if response else []
             
             print(f"   ✅ Extracted {len(epics)} Epics from {project_key}")
