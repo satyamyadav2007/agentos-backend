@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@clerk/nextjs'; // ⚡ CLERK IMPORT
+import { useAuth } from '@clerk/nextjs'; 
 import { 
   CheckCircle2, Loader2, Server, Database, BrainCircuit, 
   Activity, AlertCircle, ArrowRight, Network, GitPullRequest, 
@@ -12,7 +12,8 @@ import {
 export default function MissionControlSync() {
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const { getToken } = useAuth(); // ⚡ GET TOKEN FUNCTION
+  const syncTriggered = useRef(false); // ⚡ FIX 2: React Strict Mode Double-Fire Lock
+  const { getToken } = useAuth(); 
 
   // 🧠 THE UNIVERSAL SYNC ENGINE STATE (Single Source of Truth)
   const [engineState, setEngineState] = useState({
@@ -20,7 +21,7 @@ export default function MissionControlSync() {
     eta: "Estimating...",
     isCoreComplete: false,
     apps: [] as {name: string, status: string, progress: number, items: string}[],
-    agents: [] as {name: string, status: string}[], // ⚡ AGENTS AB SIRF YAHAN HAIN
+    agents: [] as {name: string, status: string}[], 
     metrics: { repos: 0, projects: 0, epics: 0, sprints: 0, issues: 0, prs: 0, commits: 0 },
     dataQuality: { collected: 0, normalized: 0, embedded: 0, graphNodes: 0, relationships: 0 },
     earlyFindings: [] as {label: string, value: string}[],
@@ -28,30 +29,42 @@ export default function MissionControlSync() {
   });
 
   // Extract variables for UI
-  const { overallProgress, eta, isCoreComplete, apps,  metrics, dataQuality, earlyFindings, logs } = engineState;
+  const { overallProgress, eta, isCoreComplete, apps, agents, metrics, dataQuality, earlyFindings, logs } = engineState;
 
-  // ⚡ MASTER PIPELINE: Fetch Status -> Fetch Agents -> Trigger Sync (ALL AUTHENTICATED)
+  // ⚡ MASTER PIPELINE: Fetch Status -> Fetch Agents -> Trigger Sync
   useEffect(() => {
     const initializeMissionControl = async () => {
+      // Prevent double execution in React Strict Mode
+      if (syncTriggered.current) return;
+      syncTriggered.current = true;
+
       try {
         const workspaceId = localStorage.getItem('agentos_workspace_id');
         if (!workspaceId) return;
 
-        const token = await getToken(); // ⚡ FETCH FRESH TOKEN
+        const token = await getToken(); 
         const headers = {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // ⚡ INJECT TOKEN
+          'Authorization': `Bearer ${token}` 
         };
 
         console.log("🔍 Fetching connected tools and active agents...");
         
-        // 1. Fetch Connected Apps
+        // 1. Fetch Connected Apps (100% Dynamic now)
         const statusRes = await fetch(`https://agentos-api-5suh.onrender.com/api/integrations/status?workspace_id=${workspaceId}`, { headers });
         const statusData = await statusRes.json();
         
-        const connectedTools = (statusData.connected_tools && statusData.connected_tools.length > 0) 
-          ? statusData.connected_tools 
-          : ["github", "jira"];
+        // ⚡ FIX 1: No more hardcoded "github" or "jira". We only use what the DB returns.
+        const connectedTools = statusData.connected_tools || [];
+
+        if (connectedTools.length === 0) {
+          console.warn("⚠️ No tools connected yet.");
+          setEngineState(prev => ({ 
+            ...prev, 
+            logs: [...prev.logs, { time: new Date().toLocaleTimeString(), source: 'System', msg: 'No active integrations found. Please connect a tool first.' }]
+          }));
+          return; // Stop sync if no tools are connected
+        }
 
         const dynamicApps = connectedTools.map((toolName: string) => ({
           name: toolName.charAt(0).toUpperCase() + toolName.slice(1),
@@ -66,18 +79,18 @@ export default function MissionControlSync() {
         
         const activeAgents = (agentsData.active_agents && agentsData.active_agents.length > 0)
           ? agentsData.active_agents
-          : ["Data Normalizer Agent", "Knowledge Graph Builder", "AI CPO Analytics"]; // Fallbacks
+          : ["Data Normalizer Agent", "Knowledge Graph Builder", "AI CPO Analytics"]; // Standard core agents
 
         const dynamicAgents = activeAgents.map((agentName: string) => ({
           name: agentName,
           status: 'waiting'
         }));
 
-        // Update UI State Once
+        // ⚡ FIX 3: Update Single Source of Truth properly
         setEngineState(prev => ({ ...prev, apps: dynamicApps, agents: dynamicAgents }));
 
-        // 3. 🚀 TRIGGER THE BACKEND SYNC (NO MORE 401!)
-        console.log("🚀 Firing Authorized Sync Request...");
+        // 3. 🚀 TRIGGER THE BACKEND SYNC (ONLY FIRES ONCE NOW)
+        console.log("🚀 Firing Authorized Sync Request for:", connectedTools);
         await fetch('https://agentos-api-5suh.onrender.com/api/sync/start', {
           method: 'POST',
           headers: headers,
@@ -93,55 +106,17 @@ export default function MissionControlSync() {
     };
 
     initializeMissionControl();
-  }, []);
+  }, [getToken]); // Clean dependency array
 
   // Auto-scroll logs
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  
-  
-  // ✅ 1. Agents state ko empty array se initialize karo
-  const [agents, setAgents] = useState<{name: string, status: string}[]>([]);
-
-  // ✅ 2. Backend se active agents fetch karne wala block
-  useEffect(() => {
-    const fetchActiveAgents = async () => {
-      try {
-        const workspaceId = typeof window !== 'undefined' ? localStorage.getItem('agentos_workspace_id') : null;
-        if (!workspaceId) return;
-
-        // Backend endpoint call (Example: /api/agents/active)
-        const res = await fetch(`https://agentos-api-5suh.onrender.com/api/agents/active?workspace_id=${workspaceId}`);
-        const data = await res.json();
-
-        // Backend se list aayegi: ["Cleaner Agent", "Theme Agent", "Sentiment Agent", "Forecast Agent"]
-        if (data.active_agents && data.active_agents.length > 0) {
-          const dynamicAgents = data.active_agents.map((agentName: string) => ({
-            name: agentName,
-            status: 'waiting' // Initial default status
-          }));
-          setAgents(dynamicAgents);
-        }
-      } catch (error) {
-        console.error("🚨 Failed to fetch active agents:", error);
-      }
-    };
-
-    fetchActiveAgents();
-  }, []);
-  
-  // Auto-scroll logs
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
   // ==========================================
-  // 🚀 WEBSOCKET SIMULATOR (Replace with real WS later)
+  // 🚀 WEBSOCKET SIMULATOR
   // ==========================================
   useEffect(() => {
-    // Render URL ko WSS (WebSocket Secure) protocol me convert kar rahe hain
     const wsUrl = 'wss://agentos-api-5suh.onrender.com/ws';
     const ws = new WebSocket(wsUrl);
 
@@ -163,16 +138,14 @@ export default function MissionControlSync() {
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        
-        // ⚡ UNIVERSAL SYNC: Backend ab seedha poora state object bhejega!
         if (payload.type === 'UNIVERSAL_STATE_UPDATE') {
            setEngineState(payload.data);
         }
-        
       } catch (error) {
         console.error("🚨 WebSocket Payload Parse Error:", error);
       }
     };
+
     ws.onerror = (error) => {
       console.error("🚨 WebSocket Error:", error);
     };
@@ -181,7 +154,6 @@ export default function MissionControlSync() {
       console.log("🔴 WebSocket Disconnected");
     };
 
-    // Cleanup when user leaves the page
     return () => {
       ws.close();
     };
@@ -238,25 +210,29 @@ export default function MissionControlSync() {
               <Network className="w-5 h-5 text-gray-400" /> Integration Queue
             </h2>
             <div className="space-y-4">
-              {apps.map((app, i) => (
-                <div key={i} className="bg-black border border-gray-800 rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold">{app.name}</span>
-                    <span className={`text-xs uppercase font-bold ${getStatusColor(app.status)}`}>
-                      {app.status === 'done' ? <CheckCircle2 className="w-4 h-4 inline mr-1" /> : null}
-                      {app.status}
-                    </span>
+              {apps.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">No tools connected.</div>
+              ) : (
+                apps.map((app, i) => (
+                  <div key={i} className="bg-black border border-gray-800 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-semibold">{app.name}</span>
+                      <span className={`text-xs uppercase font-bold ${getStatusColor(app.status)}`}>
+                        {app.status === 'done' ? <CheckCircle2 className="w-4 h-4 inline mr-1" /> : null}
+                        {app.status}
+                      </span>
+                    </div>
+                    {app.status !== 'disconnected' && (
+                      <>
+                        <div className="w-full bg-gray-900 h-1.5 rounded-full overflow-hidden mb-1">
+                          <div className={`h-full transition-all duration-300 ${app.status === 'done' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${app.progress}%` }} />
+                        </div>
+                        <div className="text-xs text-gray-500 text-right">{app.items}</div>
+                      </>
+                    )}
                   </div>
-                  {app.status !== 'disconnected' && (
-                    <>
-                      <div className="w-full bg-gray-900 h-1.5 rounded-full overflow-hidden mb-1">
-                        <div className={`h-full transition-all duration-300 ${app.status === 'done' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${app.progress}%` }} />
-                      </div>
-                      <div className="text-xs text-gray-500 text-right">{app.items}</div>
-                    </>
-                  )}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -325,23 +301,15 @@ export default function MissionControlSync() {
         </div>
 
         {/* COLUMN 3: LIVE TERMINAL & LAUNCH */}
-        {/* LIVE TERMINAL BOX */}
         <div className="space-y-6 flex flex-col h-full">
           <div className="bg-[#050505] border border-gray-800 rounded-xl overflow-hidden flex-1 flex flex-col shadow-lg shadow-black/50">
-            
-            {/* Terminal Header */}
             <div className="bg-[#111] px-4 py-2 border-b border-gray-800 flex items-center gap-2 text-xs font-mono text-gray-400">
               <Terminal className="w-4 h-4 text-gray-500" /> root@agentos-core ~
             </div>
-            
-            {/* Terminal Body (Live Logs) */}
             <div className="p-4 font-mono text-xs overflow-y-auto max-h-[400px] flex-1 space-y-2">
-              
-              {/* Agar logs khali hain toh waiting state */}
               {logs.length === 0 ? (
                 <div className="text-gray-600 animate-pulse">Waiting for backend connection...</div>
               ) : (
-                /* Asli live logs backend se */
                 logs.map((log, i) => (
                   <div key={i} className="leading-relaxed">
                     <span className="text-gray-600">[{log.time}]</span>{' '}
@@ -350,13 +318,10 @@ export default function MissionControlSync() {
                   </div>
                 ))
               )}
-              
-              {/* Auto-scroll anchor */}
               <div ref={logsEndRef} />
             </div>
           </div>
 
-          {/* BACKGROUND SYNC & DASHBOARD BUTTON */}
           <div className={`transition-all duration-500 ${isCoreComplete ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
             <div className="bg-green-900/10 border border-green-900/30 rounded-xl p-5 text-center">
               <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-3" />
@@ -370,7 +335,6 @@ export default function MissionControlSync() {
               </button>
             </div>
           </div>
-
         </div>
       </div>
     </div>

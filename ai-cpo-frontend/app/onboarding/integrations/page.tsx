@@ -159,8 +159,10 @@ function IntegrationsContent() {
     
     if (toolName === "Jira") {
       const clientId = "zjaxoFFVOp1dhVrcWsoKqqrAfnMADIfq"; 
-      // ⚡ FIX: Changed state=jira_auth_123 to state=jira_auth to match your oauthToolMap
-      const jiraAuthUrl = "https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=zjaxoFFVOp1dhVrcWsoKqqrAfnMADIfq&scope=read%3Ajira-work%20write%3Ajira-work%20read%3Ajira-user%20read%3Aboard-scope%3Ajira-software%20read%3Asprint%3Ajira-software%20offline_access&redirect_uri=https%3A%2F%2Fagentos-frontend-azure.vercel.app%2Fonboarding%2Fintegrations&state=jira_auth&response_type=code&prompt=consent";
+      
+      // ⚡ FIX: Removed 'read:jira-work' and switched entirely to Granular Scopes
+      const jiraAuthUrl = "https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=zjaxoFFVOp1dhVrcWsoKqqrAfnMADIfq&scope=read%3Aissue%3Ajira%20read%3Aproject%3Ajira%20read%3Aboard-scope%3Ajira-software%20read%3Aissue%3Ajira-software%20read%3Asprint%3Ajira-software%20read%3Auser%3Ajira%20offline_access&redirect_uri=https%3A%2F%2Fagentos-frontend-azure.vercel.app%2Fonboarding%2Fintegrations&state=jira_auth&response_type=code&prompt=consent";
+      
       window.location.href = jiraAuthUrl;
       return;
     }
