@@ -8,7 +8,8 @@ class JiraNormalizer:
         fields = raw_issue.get("fields", {})
         issue_type = fields.get("issuetype", {}).get("name", "Task").lower()
         
-        jira_priority = fields.get("priority", {}).get("name", "Medium").lower()
+        priority_obj = fields.get("priority") or {}
+        jira_priority = priority_obj.get("name", "Medium").lower()
         severity_map = {"highest": "Critical", "high": "High", "medium": "Medium", "low": "Low", "lowest": "Low"}
         severity = severity_map.get(jira_priority, "Medium")
         
