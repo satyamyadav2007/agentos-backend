@@ -9,14 +9,16 @@ class JiraEpicsExtractor:
         
         jql_query = f'project="{project_key}" AND issuetype=Epic ORDER BY created DESC'
         
-        params = {
+        # ⚡ FIX: POST request demands fields as a list of strings
+        payload = {
             "jql": jql_query,
             "maxResults": 50,
-            "fields": "summary,description,status,priority,assignee,created,updated" 
+            "fields": ["summary", "description", "status", "priority", "assignee", "created", "updated"]
         }
         
         try:
-            response = await self.client.get("rest/api/3/search", params=params)
+            # ⚡ FIX: Migrated to the new /search/jql endpoint as per Atlassian's requirement
+            response = await self.client.post("rest/api/3/search/jql", json_data=payload)
             
             epics = response.get("issues", []) if response else []
             print(f"   ✅ Extracted {len(epics)} Epics from {project_key}")

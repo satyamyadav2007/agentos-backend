@@ -77,15 +77,9 @@ class JiraConnector(BaseConnector):
             db.commit()
             print(f"✅ [DB] Jira Integration saved for Workspace {self.workspace_id}")
 
-            # 3. Trigger Initial Sync dynamically
-            sync_result = await self.sync(user_email=user_email)
             
-            return {
-                "status": "connected",
-                "provider": "jira",
-                "site_url": site_url,
-                "sync_info": sync_result
-            }
+            
+            return {"status": "connected", "message": "Jira authenticated successfully."}
 
         except Exception as e:
             db.rollback()
