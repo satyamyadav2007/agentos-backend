@@ -2136,7 +2136,28 @@ async def execute_mission_control_sync(workspace_id: str, user_email: str, reque
     }
 
     async def push_state():
-        await ws_manager.broadcast(json.dumps({"type": "UNIVERSAL_STATE_UPDATE", "data": engine_state}, default=str))
+        print("🔄 [Debug] Attempting to push state...")
+        try:
+            # Step 1: Try dumping JSON separately to isolate serialization errors
+            payload = json.dumps(
+                {
+                    "type": "UNIVERSAL_STATE_UPDATE",
+                    "data": engine_state
+                },
+                default=str
+            )
+            print("✅ [Debug] JSON dumped successfully!")
+            
+            # Step 2: Broadcast the payload
+            await ws_manager.broadcast(payload)
+            print("✅ [Debug] Broadcast sent successfully!")
+            
+        except TypeError as te:
+            print(f"🚨 [JSON Serialization Error in push_state]: {te}")
+            # Optionally print the state to see what caused the crash
+            # print(f"Problematic State: {engine_state}")
+        except Exception as e:
+            print(f"🚨 [WebSocket/Unknown Error in push_state]: {str(e)}")
 
     def add_log(source, msg):
         now = time.strftime("%H:%M:%S")
