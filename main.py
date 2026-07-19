@@ -188,11 +188,13 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
+        # ⚡ FIX: Use list() to iterate over a copy of the list to prevent concurrent modification errors
+        for connection in list(self.active_connections):
             try:
                 await connection.send_text(message)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ [WebSocket] Dead connection removed. Error: {e}")
+                self.disconnect(connection) # ⚡ FIX: Remove dead connection immediately
 
 manager = ConnectionManager()
 ws_manager = ConnectionManager()
