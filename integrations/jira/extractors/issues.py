@@ -4,7 +4,7 @@ class JiraIssuesExtractor:
     def __init__(self, client):
         self.client = client
 
-    async def fetch_issues(self, project_key: str) -> list:
+    async def fetch_project_issues(self, project_key: str) -> list:
         print(f"🐛 [Jira Extractor] Fetching issues for Project: {project_key}...")
         
         jql_query = f'project="{project_key}" AND issuetype != Epic ORDER BY updated DESC'
